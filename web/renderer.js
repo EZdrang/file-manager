@@ -215,12 +215,7 @@ function initEventListeners() {
       }
       searchTimeout = setTimeout(async () => {
         try {
-          const scope = document.querySelector('.scope-btn.active')?.dataset.scope;
-          if (scope === 'global') {
-            await globalSearch(q);
-          } else {
-            await advancedSearch(q);
-          }
+          await advancedSearch(q);
         } catch (e) { console.error('Search error:', e); }
       }, 300);
     } else {
@@ -235,11 +230,7 @@ function initEventListeners() {
       document.querySelectorAll('.scope-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const q = document.getElementById('searchInput').value.trim();
-      if (q) {
-        const scope = btn.dataset.scope;
-        if (scope === 'global') globalSearch(q);
-        else advancedSearch(q);
-      }
+      if (q) advancedSearch(q);
     });
   });
 
@@ -580,8 +571,16 @@ async function setWorkspace() {
   }
 }
 
-function updateTitle() {
-  const name = workspaceDir ? workspaceDir.split(/[/\\]/).pop() : '未选择目录';
+async function updateTitle() {
+  let name = '未选择目录';
+  if (workspaceDir) {
+    const parts = workspaceDir.split(/[/\\]/).filter(Boolean);
+    name = parts[parts.length - 1] || workspaceDir;
+    try {
+      const meta = await api.getMeta(workspaceDir);
+      if (meta && meta.folderNote) name = meta.folderNote;
+    } catch (e) {}
+  }
   document.getElementById('titlebarTitle').textContent = `资料管理系统 - ${name}`;
 }
 

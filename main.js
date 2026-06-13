@@ -1623,19 +1623,32 @@ ipcMain.handle('check-update', async () => {
     const https = require('https');
     const url = 'https://api.github.com/repos/EZdrang/file-manager/releases/latest';
     
+    function compareVersions(a, b) {
+      const pa = a.split('.').map(Number);
+      const pb = b.split('.').map(Number);
+      for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        const na = pa[i] || 0;
+        const nb = pb[i] || 0;
+        if (na > nb) return 1;
+        if (na < nb) return -1;
+      }
+      return 0;
+    }
+    
     return new Promise((resolve) => {
       const req = https.get(url, { 
         headers: { 'User-Agent': 'FileManager-App' },
-        timeout: 10000
+        timeout: 8000,
+        rejectUnauthorized: false
       }, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
           try {
             const release = JSON.parse(data);
-            const latestVersion = release.tag_name.replace('v', '');
+            const latestVersion = (release.tag_name || '').replace('v', '');
             const currentVersion = APP_VERSION;
-            const hasUpdate = latestVersion > currentVersion;
+            const hasUpdate = latestVersion && compareVersions(latestVersion, currentVersion) > 0;
             resolve({
               hasUpdate,
               currentVersion,
@@ -1649,8 +1662,8 @@ ipcMain.handle('check-update', async () => {
           }
         });
       });
-      req.on('error', () => resolve({ hasUpdate: false, error: '网络错误' }));
-      req.on('timeout', () => { req.destroy(); resolve({ hasUpdate: false, error: '超时' }); });
+      req.on('error', (e) => resolve({ hasUpdate: false, error: '网络错误: ' + e.message }));
+      req.on('timeout', () => { req.destroy(); resolve({ hasUpdate: false, error: '连接超时，可能是网络问题或 GitHub 访问受限' }); });
     });
   } catch (e) {
     return { hasUpdate: false, error: e.message };
