@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ELEC_SRC = 'C:\\Program Files\\Blackmagic Design\\DaVinci Resolve\\Electron';
-const APP_NAME = '资料管理系统2.0';
+const APP_NAME = '资料管理系统2.2';
 const DIST = path.join(__dirname, 'dist');
 const BUILD = path.join(DIST, APP_NAME);
 
