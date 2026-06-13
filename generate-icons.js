@@ -1,14 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 
-// Modern file manager icon - clean folder design with gradient
-// Design: stylized folder with document peeking out, purple/indigo theme
+// 现代文件管理器图标 - 渐变文件夹设计
+// 设计：带有文档露出的风格化文件夹，紫色/靛蓝色主题
 
 function createPNG(width, height, drawFn) {
   const pixels = Buffer.alloc(width * height * 4);
   drawFn(pixels, width, height);
   
-  // PNG encoder (minimal)
+  // PNG编码器（最小化）
   const crcTable = new Int32Array(256);
   for (let n = 0; n < 256; n++) {
     let c = n;
@@ -31,7 +31,7 @@ function createPNG(width, height, drawFn) {
     return Buffer.concat([len, typeData, crc]);
   }
   
-  // Deflate raw pixel data
+  // 压缩原始像素数据
   const rawRow = Buffer.alloc(width * (height * 4 + 1));
   for (let y = 0; y < height; y++) {
     rawRow[y * (width * 4 + 1)] = 0; // filter: none
@@ -63,7 +63,7 @@ function createPNG(width, height, drawFn) {
 function drawIcon(pixels, w, h) {
   const cx = w / 2, cy = h / 2;
   
-  // Color palette (modern purple/indigo gradient)
+  // 颜色调色板（现代紫色/靛蓝渐变）
   const colors = {
     folderBack:  [79, 70, 229],    // #4f46e5
     folderFront: [99, 102, 241],   // #6366f1
@@ -106,48 +106,48 @@ function drawIcon(pixels, w, h) {
   
   const s = w / 256; // scale factor
   
-  // Background circle (subtle)
+  // 背景圆圈（微妙）
   roundedRect(20*s, 20*s, 236*s, 236*s, 40*s, 99, 102, 241, 25);
   
   // Document (back) - white page peeking out
   const docX = 90*s, docY = 55*s, docW = 100*s, docH = 140*s;
   roundedRect(docX, docY, docX + docW, docY + docH, 8*s, 255, 255, 255, 255);
-  // Document fold corner
+  // 文档折叠角
   for (let i = 0; i < 20*s; i++) {
     filledRect(docX + docW - 20*s + i, docY, docX + docW, docY + 20*s - i, 240, 240, 245, 255);
     for (let j = 0; j < 20*s - i; j++) setPixel(docX + docW - 20*s + i, docY + j, 200, 200, 210, 255);
   }
-  // Document lines
+  // 文档线条
   for (let i = 0; i < 5; i++) {
     const lineY = docY + 35*s + i * 22*s;
     const lineW = (i === 4 ? 60 : 75) * s;
     filledRect(docX + 12*s, lineY, docX + 12*s + lineW, lineY + 6*s, 200, 205, 215, 200);
   }
   
-  // Folder back
+  // 文件夹背面
   const fX = 30*s, fY = 100*s, fW = 150*s, fH = 100*s;
   roundedRect(fX, fY + 15*s, fX + fW, fY + fH, 10*s, 79, 70, 229, 255);
   
-  // Folder tab
+  // 文件夹标签
   roundedRect(fX, fY, fX + 60*s, fY + 25*s, 8*s, 79, 70, 229, 255);
   
-  // Folder front (lighter)
+  // 文件夹正面（更亮）
   roundedRect(fX, fY + 20*s, fX + fW, fY + fH, 10*s, 99, 102, 241, 255);
   
-  // Folder highlight
+  // 文件夹高光
   filledRect(fX + 10*s, fY + 28*s, fX + fW - 10*s, fY + 34*s, 129, 140, 248, 120);
   
-  // Small accent dot (design element)
+  // 小装饰点（设计元素）
   roundedRect(fX + fW - 30*s, fY + 45*s, fX + fW - 10*s, fY + 65*s, 5*s, 168, 85, 247, 200);
   
-  // Subtle shadow under folder
+  // 文件夹下方阴影
   for (let y = 0; y < 8*s; y++) {
     const alpha = Math.round(30 * (1 - y / (8*s)));
     filledRect(fX + 15*s, fY + fH + y, fX + fW - 5*s, fY + fH + y, 0, 0, 0, alpha);
   }
 }
 
-// Generate different sizes
+// 生成不同尺寸
 const sizes = [16, 32, 48, 64, 128, 256];
 const outDir = path.join(__dirname, 'web');
 
@@ -155,14 +155,14 @@ for (const size of sizes) {
   const pixels = Buffer.alloc(size * size * 4);
   drawIcon(pixels, size, size);
   const png = createPNG(size, size, (p, w, h) => {
-    // Copy our drawn pixels
+    // 复制绘制的像素
     pixels.copy(p);
   });
   fs.writeFileSync(path.join(outDir, `icon-${size}.png`), png);
   console.log(`Generated icon-${size}.png`);
 }
 
-// Also create a simple ICO file (Windows icon format)
+// 同时创建ICO文件（Windows图标格式）
 // ICO format: header + directory entries + PNG data for each size
 function createICO(pngBuffers) {
   const icoHeader = Buffer.alloc(6);
@@ -202,5 +202,5 @@ const ico = createICO(icoBuffers);
 fs.writeFileSync(path.join(outDir, 'icon.ico'), ico);
 console.log('Generated icon.ico');
 
-// Create tray-sized icon (16x16 PNG)
+// 创建托盘尺寸图标（16x16 PNG）
 console.log('All icons generated!');

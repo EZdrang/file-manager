@@ -18,7 +18,7 @@
     "electron-builder": "^26.0.12"
   },
   "build": {
-    "appId": "com.mimocode.filemanager",
+    "appId": "com.ezdrang.filemanager",
     "productName": "资料管理系统2.1",
     "win": {
       "target": ["nsis", "portable", "dir"],

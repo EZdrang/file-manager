@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadSettings();
   initTabBar();
 
-  // Listen for close action from main process
+  // 监听关闭操作
   api.onAskCloseAction(() => {
     const s = getSettings();
     if (s.closeToTray === true) {
@@ -123,7 +123,7 @@ function initEventListeners() {
   });
 
   document.addEventListener('contextmenu', (e) => {
-    // Any pre element (preview area, modal docs, API settings, log viewer)
+    // 任何pre元素（预览区、模态框文档、API设置、日志查看器）
     const pre = e.target.closest('pre');
     if (pre) {
       e.preventDefault();
@@ -229,7 +229,7 @@ function initEventListeners() {
         }
       }
       if (e.key === 'v') {
-        // Always try system clipboard first (Explorer files)
+        // 优先使用系统剪贴板（资源管理器文件）
         const sysFiles = await api.clipboardReadFiles();
         if (sysFiles && sysFiles.length > 0) {
           pasteFromSystemClipboard();
@@ -392,7 +392,7 @@ function openTab(dirPath) {
 function switchTab(index) {
   if (index < 0 || index >= tabs.length) return;
 
-  // Save current tab scroll position
+  // 保存当前标签页滚动位置
   if (activeTabIndex >= 0 && activeTabIndex < tabs.length) {
     const container = document.querySelector('.file-table-container');
     if (container) tabs[activeTabIndex].scrollY = container.scrollTop;
@@ -484,7 +484,7 @@ async function buildTree() {
   tree.innerHTML = '';
 
   try {
-    // Workspace root
+    // 工作目录根节点
     if (workspaceDir) {
       const rootName = workspaceDir.split(/[/\\]/).pop();
       const rootItem = document.createElement('div');
@@ -534,7 +534,7 @@ async function buildTree() {
       tree.appendChild(rootChildren);
     }
 
-    // Linked folders mixed in
+    // 链接的外部文件夹混入显示
     if (linkedFolders.length > 0) {
       for (const lf of linkedFolders) {
         const item = document.createElement('div');
@@ -663,7 +663,7 @@ async function loadDir(dirPath) {
   if (!dirPath) return;
   currentDir = dirPath;
 
-  // Track history
+  // 记录历史
   if (historyIndex < dirHistory.length - 1) {
     dirHistory = dirHistory.slice(0, historyIndex + 1);
   }
@@ -698,7 +698,7 @@ async function loadDir(dirPath) {
 
   updateBreadcrumb(dirPath);
 
-  // Sync tree highlight
+  // 同步树高亮
   if (!searchTimeout) highlightTreeNode(dirPath);
 }
 
@@ -706,7 +706,7 @@ function renderFileList(entries) {
   const tbody = document.getElementById('fileTableBody');
   tbody.innerHTML = '';
 
-  // Go up button
+  // 返回上一层按钮
   if (currentDir && currentDir !== workspaceDir) {
     const parentDir = currentDir.replace(/[/\\][^/\\]+$/, '');
     const upRow = document.createElement('tr');
@@ -734,7 +734,7 @@ function renderFileList(entries) {
     });
   }
 
-  // Load tags in background
+  // 后台加载标签
   loadTagsForEntries(entries, tbody);
 }
 
@@ -789,7 +789,7 @@ async function loadTagsForEntries(entries, tbody) {
       }
     });
 
-    // Drag to Explorer
+    // 拖拽到资源管理器
     tr.setAttribute('draggable', 'true');
     tr.addEventListener('dragstart', (e) => {
       e.preventDefault();
@@ -964,7 +964,7 @@ function showFileListBgContextMenu(e) {
     items.push({ icon: '📌', label: '粘贴到当前文件夹', action: () => pasteToFolder(currentDir) });
   }
 
-  // Always show paste from Explorer option
+  // 始终显示从资源管理器粘贴选项
   if (currentDir) {
     items.push({ sep: true });
     items.push({ icon: '📋', label: '从资源管理器粘贴', action: () => pasteFromSystemClipboard() });
@@ -1034,7 +1034,7 @@ function matchFile(entry, conditions, meta) {
   const tags = (meta?.tags || '').toLowerCase();
   const notes = (meta?.notes || '').toLowerCase();
   
-  // Check exclude conditions (AND logic - if any exclude matches, reject)
+  // 检查排除条件（AND逻辑 - 任一排除匹配则拒绝）
   for (const et of conditions.excludeTags) {
     if (tags.includes(et)) return false;
   }
@@ -1042,24 +1042,24 @@ function matchFile(entry, conditions, meta) {
     if (ext === ee) return false;
   }
   
-  // Check positive conditions (AND logic within group, OR between groups)
+  // 检查正向条件（组内AND逻辑，组间OR逻辑）
   let matchTag = conditions.tags.length === 0;
   let matchExt = conditions.exts.length === 0;
   let matchNote = conditions.notes.length === 0;
   let matchYaml = conditions.yaml.length === 0;
   let matchKw = conditions.keywords.length === 0;
   
-  // Tag match
+  // 标签匹配
   if (conditions.tags.length > 0) {
     matchTag = conditions.tags.some(t => tags.includes(t));
   }
   
-  // Extension match
+  // 扩展名匹配
   if (conditions.exts.length > 0) {
     matchExt = conditions.exts.some(e => ext === e || (e === 'image' && ['png','jpg','jpeg','gif','bmp','webp','svg','ico'].includes(ext)) || (e === 'code' && ['py','js','ts','java','c','cpp','h','go','rs','rb','php'].includes(ext)) || (e === 'doc' && ['doc','docx','pdf','txt','md'].includes(ext)));
   }
   
-  // Note match
+  // 备注匹配
   if (conditions.notes.length > 0) {
     matchNote = conditions.notes.some(n => notes.includes(n));
   }
@@ -1070,7 +1070,7 @@ function matchFile(entry, conditions, meta) {
     matchYaml = conditions.yaml.some(y => yamlContent.includes(y));
   }
   
-  // Keyword match (filename)
+  // 关键词匹配（文件名）
   if (conditions.keywords.length > 0) {
     matchKw = conditions.keywords.some(k => name.includes(k));
   }
@@ -1092,7 +1092,7 @@ async function advancedSearch(query) {
                      conditions.notes.length > 0 || conditions.yaml.length > 0 || 
                      conditions.excludeTags.length > 0 || conditions.excludeExts.length > 0;
   
-  // If only keywords, use the backend search for speed
+  // 如果只有关键词，使用后端搜索提高速度
   if (!hasSpecial && conditions.keywords.length > 0 && !conditions.hasOr) {
     return await searchFiles(conditions.keywords.join(' '));
   }
@@ -1101,7 +1101,7 @@ async function advancedSearch(query) {
   const allEntries = await api.readDir(workspaceDir);
   const results = [];
   
-  // Get all files recursively for filtering
+  // 递归获取所有文件用于筛选
   async function collectFiles(dirPath) {
     const entries = await api.readDir(dirPath);
     for (const entry of entries) {
@@ -1114,7 +1114,7 @@ async function advancedSearch(query) {
   
   await collectFiles(workspaceDir);
   
-  // Get metadata for all files
+  // 获取所有文件的元数据
   const filtered = [];
   for (const entry of results) {
     if (filtered.length >= 200) break;
@@ -1127,7 +1127,7 @@ async function advancedSearch(query) {
     }
   }
   
-  // Display results
+  // 显示结果
   document.getElementById('statusText').textContent = `搜索: ${filtered.length} 个结果`;
   const tbody = document.getElementById('fileTableBody');
   tbody.innerHTML = '';
@@ -1232,13 +1232,13 @@ async function syncTreeForSearch(dirPaths) {
   document.querySelectorAll('.tree-children').forEach(c => { c.style.display = 'none'; });
   document.querySelectorAll('.tree-arrow').forEach(a => { a.classList.remove('expanded'); });
 
-  // Highlight matching directories
+  // 高亮匹配的目录
   for (const dirPath of dirPaths) {
     const parts = dirPath.replace(workspaceDir, '').split(/[/\\]/).filter(Boolean);
     let accum = workspaceDir;
     for (const part of parts) {
       accum += '\\' + part;
-      // Expand this level
+      // 展开这一层
       const node = document.querySelector(`.tree-node-item[data-path="${CSS.escape(accum)}"]`);
       if (node) {
         const arrow = node.querySelector('.tree-arrow');
@@ -1254,7 +1254,7 @@ async function syncTreeForSearch(dirPaths) {
           }
         }
       } else {
-        // Expand parent first
+        // 先展开父级
         const parentPath = accum.replace(/[/\\][^/\\]+$/, '');
         const parentNode = document.querySelector(`.tree-node-item[data-path="${CSS.escape(parentPath)}"]`);
         if (parentNode) {
@@ -1268,7 +1268,7 @@ async function syncTreeForSearch(dirPaths) {
             childrenEl.style.display = 'block';
             if (arrow) arrow.classList.add('expanded');
           }
-          // Now try to find the node again
+          // 再次尝试查找节点
           const node2 = document.querySelector(`.tree-node-item[data-path="${CSS.escape(accum)}"]`);
           if (node2) {
             const arrow2 = node2.querySelector('.tree-arrow');
@@ -1285,7 +1285,7 @@ async function syncTreeForSearch(dirPaths) {
         }
       }
     }
-    // Highlight the leaf directory
+    // 高亮叶子目录
     const leafNode = document.querySelector(`.tree-node-item[data-path="${CSS.escape(dirPath)}"]`);
     if (leafNode) {
       leafNode.style.background = 'var(--bg-active)';
@@ -1296,10 +1296,10 @@ async function syncTreeForSearch(dirPaths) {
 
 // === 操作功能 ===
 async function navigateToPath(targetPath) {
-  // Normalize path
+  // 标准化路径
   const normalized = targetPath.replace(/\//g, '\\');
   
-  // Check if path exists
+  // 检查路径是否存在
   const pathInfo = await api.checkPath(normalized);
   if (!pathInfo.exists) {
     showToast('路径不存在', 'error');
@@ -1308,7 +1308,7 @@ async function navigateToPath(targetPath) {
 
   let dirToLoad = normalized;
   
-  // If it's a file, navigate to its parent directory
+  // 如果是文件，跳转到其所在目录
   if (!pathInfo.isDir) {
     dirToLoad = normalized.replace(/\\[^\\]+$/, '');
     const parentInfo = await api.checkPath(dirToLoad);
@@ -1318,7 +1318,7 @@ async function navigateToPath(targetPath) {
     }
   }
 
-  // Check if this dir is within workspace or linked folders
+  // 检查此目录是否在工作区或已链接文件夹内
   let isAccessible = false;
   if (workspaceDir && dirToLoad.startsWith(workspaceDir)) {
     isAccessible = true;
@@ -1331,7 +1331,7 @@ async function navigateToPath(targetPath) {
     }
   }
 
-  // If not accessible, auto-link the directory (or its parent if it's a file)
+  // 如果不可访问，自动链接目录（或其父目录）
   if (!isAccessible) {
     const linkTarget = pathInfo.isDir ? normalized : dirToLoad;
     const result = await api.addLinkedFolderPath(linkTarget);
@@ -1340,14 +1340,14 @@ async function navigateToPath(targetPath) {
       await buildTree();
       showToast(`已自动链接: ${result.name}`, 'success');
     } else if (result && result.alreadyLinked) {
-      // Already linked, just navigate
+      // 已链接，直接跳转
     } else {
       showToast('无法链接该路径', 'error');
       return;
     }
   }
 
-  // Navigate to the directory
+  // 跳转到目标目录
   currentDir = dirToLoad;
   expandedDirs.clear();
   document.getElementById('emptyHint').style.display = 'none';
@@ -1369,7 +1369,7 @@ async function goBack() {
   currentDir = parentPath;
   await loadDir(parentPath);
   await buildTree();
-  // Expand to the target path in the tree
+  // 展开到目标路径
   await expandTreeToPath(parentPath);
   highlightTreeNode(parentPath);
 }
@@ -1883,7 +1883,7 @@ async function pasteFromSystemClipboard() {
 
 async function refresh() {
   if (!currentDir) return;
-  // Remember which folders are expanded
+  // 记住哪些文件夹已展开
   const expanded = new Set();
   document.querySelectorAll('.tree-node-item').forEach(item => {
     const arrow = item.querySelector('.tree-arrow');
@@ -1896,7 +1896,7 @@ async function refresh() {
   await loadDir(currentDir);
   await buildTree();
 
-  // Restore expanded state
+  // 恢复展开状态
   for (const path of expanded) {
     const node = document.querySelector(`.tree-node-item[data-path="${CSS.escape(path)}"]`);
     if (node) {
@@ -2092,7 +2092,7 @@ async function importConfig() {
   const data = await api.importConfig();
   if (data) {
     showToast('配置已导入，重启后生效', 'success');
-    // Reload settings
+    // 重新加载设置
     loadSettings();
     applyTheme(getSettings().theme || 'dark');
     if (data.workspace) {
@@ -2148,7 +2148,7 @@ async function showLogViewer() {
     closeMenuOnClick(menu);
   });
 
-  // Keyboard shortcuts for log viewer
+  // 日志查看器键盘快捷键
   logPre.addEventListener('keydown', (e) => {
     if (e.ctrlKey) {
       if (e.key === 'a') {
@@ -2270,7 +2270,7 @@ POST /api/rename         重命名 {path, newName}</pre>
       </div>
       <div>
         <h4 style="font-size:13px;color:var(--accent);margin-bottom:8px;">调用示例</h4>
-        <pre style="background:var(--bg-tertiary);padding:12px;border-radius:8px;font-size:11px;color:var(--text-secondary);white-space:pre-wrap;line-height:1.6;user-select:text;cursor:text;"># MiMo Code / Claude Code 调用
+        <pre style="background:var(--bg-tertiary);padding:12px;border-radius:8px;font-size:11px;color:var(--text-secondary);white-space:pre-wrap;line-height:1.6;user-select:text;cursor:text;"># EZdrang / Claude Code 调用
 curl http://127.0.0.1:${port}/api/workspace
 
 # 搜索文件
@@ -2632,7 +2632,7 @@ document.getElementById('wizardThemeLight').addEventListener('click', () => {
 });
 
 function finishWizard() {
-  // Reset all settings to defaults
+  // 重置所有设置为默认值
   const s = {
     theme: wizardTheme,
     autoCollapse: true,

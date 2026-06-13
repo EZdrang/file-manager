@@ -8,11 +8,11 @@ const BUILD = path.join(DIST, APP_NAME);
 
 console.log('=== 打包开始 ===');
 
-// Clean
+// 清理
 if (fs.existsSync(DIST)) fs.rmSync(DIST, { recursive: true, force: true });
 fs.mkdirSync(BUILD, { recursive: true });
 
-// Copy ALL Electron files
+// 复制所有Electron文件
 console.log('复制 Electron...');
 function copyDir(src, dest) {
   fs.mkdirSync(dest, { recursive: true });
@@ -27,7 +27,7 @@ function copyDir(src, dest) {
   }
 }
 
-// Copy all files from Electron dir
+// 复制Electron目录中的所有文件
 for (const entry of fs.readdirSync(ELEC_SRC, { withFileTypes: true })) {
   const srcPath = path.join(ELEC_SRC, entry.name);
   const destPath = path.join(BUILD, entry.name);
@@ -38,14 +38,14 @@ for (const entry of fs.readdirSync(ELEC_SRC, { withFileTypes: true })) {
   }
 }
 
-// Rename exe
+// 重命名exe
 fs.renameSync(path.join(BUILD, 'electron.exe'), path.join(BUILD, `${APP_NAME}.exe`));
 
-// Remove default_app.asar (conflicts with our app)
+// 删除default_app.asar（与我们的应用冲突）
 const defaultAsar = path.join(BUILD, 'resources', 'default_app.asar');
 if (fs.existsSync(defaultAsar)) fs.unlinkSync(defaultAsar);
 
-// Copy app files into resources/app
+// 复制应用文件到resources/app
 console.log('复制应用文件...');
 const appDir = path.join(BUILD, 'resources', 'app');
 fs.mkdirSync(appDir, { recursive: true });
@@ -55,16 +55,16 @@ for (const f of filesToCopy) {
   fs.copyFileSync(path.join(__dirname, f), path.join(appDir, f));
 }
 
-// Copy web folder
+// 复制web文件夹
 fs.cpSync(path.join(__dirname, 'web'), path.join(appDir, 'web'), { recursive: true });
 
-// Copy sql.js
+// 复制sql.js
 const sqlJsPath = path.join(__dirname, 'node_modules', 'sql.js');
 if (fs.existsSync(sqlJsPath)) {
   fs.cpSync(sqlJsPath, path.join(appDir, 'node_modules', 'sql.js'), { recursive: true });
 }
 
-// Create launcher
+// 创建启动器
 const launcher = `@echo off
 chcp 65001 >nul
 title ${APP_NAME}
@@ -75,7 +75,7 @@ const vbs = `Set WshShell = CreateObject("WScript.Shell")
 WshShell.Run """${APP_NAME}.exe""", 0, False`;
 fs.writeFileSync(path.join(BUILD, '启动.vbs'), vbs, 'utf-8');
 
-// Size
+// 计算大小
 const totalSize = fs.readdirSync(BUILD, { withFileTypes: true })
   .reduce((sum, entry) => {
     if (entry.isFile()) return sum + fs.statSync(path.join(BUILD, entry.name)).size;
