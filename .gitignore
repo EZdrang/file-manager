@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 package-lock.json
 
@@ -21,3 +21,9 @@ Thumbs.db
 # Temp files
 *.tmp
 *.bak
+
+# Old files (not needed)
+app.py
+installer.py
+server.py
+generate-icons.js
