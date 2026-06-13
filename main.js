@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const APP_VERSION = '2.1';
+const APP_VERSION = '2.2';
 const CONFIG_DIR = app.getPath('userData');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const META_PATH = path.join(CONFIG_DIR, 'metadata.json');
@@ -196,7 +196,7 @@ function createTray() {
   }
 
   tray = new Tray(trayIcon);
-  tray.setToolTip('资料管理系统2.1');
+  tray.setToolTip('资料管理系统2.2');
 
   const contextMenu = Menu.buildFromTemplate([
     { 

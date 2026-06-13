@@ -487,7 +487,7 @@ async function setWorkspace() {
 
 function updateTitle() {
   const name = workspaceDir ? workspaceDir.split(/[/\\]/).pop() : '未选择目录';
-  document.getElementById('titlebarTitle').textContent = `资料管理系统2.1 - ${name}`;
+  document.getElementById('titlebarTitle').textContent = `资料管理系统2.2 - ${name}`;
 }
 
 // === 文件树（左侧边栏）===
@@ -2186,8 +2186,8 @@ function showAbout() {
   document.getElementById('modalBody').innerHTML = `
     <div style="text-align:center;padding:20px;">
       <div style="font-size:48px;margin-bottom:16px;">📁</div>
-      <h3 style="margin-bottom:8px;">资料管理系统2.1</h3>
-      <p style="color:var(--text-muted);font-size:13px;">版本 2.1.0</p>
+      <h3 style="margin-bottom:8px;">资料管理系统2.2</h3>
+      <p style="color:var(--text-muted);font-size:13px;">版本 2.2.0</p>
       <p style="color:var(--text-muted);font-size:13px;margin-top:8px;">Electron + 文件系统模式</p>
       <p style="color:var(--text-muted);font-size:13px;">EZdrang 出品</p>
     </div>
