@@ -8,7 +8,7 @@
     "build": "node build.js",
     "dist": "electron-builder --win portable"
   },
-  "author": "MiMo Code",
+  "author": "EZdrang",
   "license": "MIT",
   "dependencies": {
     "sql.js": "^1.14.1"

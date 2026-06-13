@@ -143,7 +143,7 @@ class InstallerApp:
             winreg.SetValueEx(uninstall_key, "UninstallString", 0, winreg.REG_SZ, f'"{os.path.join(install_path, "uninstall.exe")}"')
             winreg.SetValueEx(uninstall_key, "InstallLocation", 0, winreg.REG_SZ, install_path)
             winreg.SetValueEx(uninstall_key, "DisplayVersion", 0, winreg.REG_SZ, "1.0")
-            winreg.SetValueEx(uninstall_key, "Publisher", 0, winreg.REG_SZ, "MiMo Code")
+            winreg.SetValueEx(uninstall_key, "Publisher", 0, winreg.REG_SZ, "EZdrang")
             winreg.CloseKey(uninstall_key)
             
             uninstall_script = f'''

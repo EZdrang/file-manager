@@ -456,7 +456,7 @@ function renderTabs() {
   });
 }
 
-// === Workspace ===
+// === 工作目录 ===
 async function setWorkspace() {
   const dir = await api.setWorkspace();
   if (dir) {
@@ -477,7 +477,7 @@ function updateTitle() {
   document.getElementById('titlebarTitle').textContent = `资料管理系统2.0 - ${name}`;
 }
 
-// === File Tree (left sidebar) ===
+// === 文件树（左侧边栏）===
 async function buildTree() {
   const tree = document.getElementById('fileTree');
   if (!tree) return;
@@ -658,7 +658,7 @@ function createChildNode(container, name, fullPath, depth, isLinked) {
   container.appendChild(childrenEl);
 }
 
-// === File List (right panel) ===
+// === 文件列表（右侧面板）===
 async function loadDir(dirPath) {
   if (!dirPath) return;
   currentDir = dirPath;
@@ -989,7 +989,7 @@ function showFileListBgContextMenu(e) {
   closeMenuOnClick(menu);
 }
 
-// === Search ===
+// === 搜索功能 ===
 function clearSearchHighlight() {
   document.querySelectorAll('.tree-node-item').forEach(n => {
     n.style.background = '';
@@ -1294,7 +1294,7 @@ async function syncTreeForSearch(dirPaths) {
   }
 }
 
-// === Actions ===
+// === 操作功能 ===
 async function navigateToPath(targetPath) {
   // Normalize path
   const normalized = targetPath.replace(/\//g, '\\');
@@ -1922,7 +1922,7 @@ function toggleSort(by) {
   if (currentDir) loadDir(currentDir);
 }
 
-// === Breadcrumb ===
+// === 面包屑导航 ===
 function updateBreadcrumb(dirPath) {
   const bc = document.getElementById('breadcrumb');
   if (!workspaceDir || !dirPath) { bc.innerHTML = ''; return; }
@@ -1971,7 +1971,7 @@ function updateBreadcrumb(dirPath) {
   });
 }
 
-// === Settings ===
+// === 设置面板 ===
 function showSettings() {
   const settings = getSettings();
   const modal = document.getElementById('modal');
@@ -2233,7 +2233,7 @@ function showAbout() {
       <h3 style="margin-bottom:8px;">资料管理系统2.0</h3>
       <p style="color:var(--text-muted);font-size:13px;">版本 2.0.0</p>
       <p style="color:var(--text-muted);font-size:13px;margin-top:8px;">Electron + 文件系统模式</p>
-      <p style="color:var(--text-muted);font-size:13px;">MiMo Code 出品</p>
+      <p style="color:var(--text-muted);font-size:13px;">EZdrang 出品</p>
     </div>
   `;
   document.getElementById('modalFooter').innerHTML = `<button class="modal-btn primary" onclick="closeModal()">确定</button>`;
@@ -2482,7 +2482,7 @@ function renderTags(tagsStr) {
   }).join('');
 }
 
-// === Theme ===
+// === 主题系统 ===
 function initTheme() { applyTheme(getSettings().theme || 'dark'); }
 
 function toggleTheme() {
@@ -2526,7 +2526,7 @@ window.closeModal = closeModal;
 window.saveSettings = saveSettings;
 window._toast = showToast;
 
-// === First-Run Wizard ===
+// === 首次运行向导 ===
 let wizardStep = 1;
 let wizardWorkspace = null;
 let wizardImported = false;

@@ -9,7 +9,7 @@ const CONFIG_DIR = app.getPath('userData');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const META_PATH = path.join(CONFIG_DIR, 'metadata.json');
 
-// Legacy log path (versioned) and new universal log path
+// 旧版日志路径（带版本号）和新版通用日志路径
 const LEGACY_LOG_NAME = '.资料管理系统2.0.log';
 const UNIVERSAL_LOG_NAME = '.资料管理系统.log';
 
@@ -17,19 +17,19 @@ let mainWindow;
 let tray = null;
 let workspaceDir = null;
 
-// === Logging ===
+// === 日志系统 ===
 function getLogPath() {
   if (!workspaceDir) return null;
   const universal = path.join(workspaceDir, UNIVERSAL_LOG_NAME);
   const legacy = path.join(workspaceDir, LEGACY_LOG_NAME);
-  // Migrate legacy log to universal name
+  // 迁移旧版日志到新版文件名
   if (fs.existsSync(legacy) && !fs.existsSync(universal)) {
     try {
       fs.renameSync(legacy, universal);
       execSync(`attrib +h "${universal}"`, { stdio: 'ignore' });
     } catch (e) {}
   }
-  // Ensure hidden attribute
+  // 确保隐藏属性
   if (fs.existsSync(universal)) {
     try { execSync(`attrib +h "${universal}"`, { stdio: 'ignore' }); } catch (e) {}
   }
@@ -43,9 +43,9 @@ function writeLog(action, detail) {
     const now = new Date().toLocaleString('zh-CN');
     const line = `[${now}] [系统与操作任务] ${action}: ${detail}\n`;
     fs.appendFileSync(logPath, line, 'utf-8');
-    // Set hidden attribute on Windows
+    // 设置Windows隐藏属性
     try { execSync(`attrib +h "${logPath}"`, { stdio: 'ignore' }); } catch (e) {}
-    // Check size > 5MB
+    // 检查大小超过5MB则清理
     const stat = fs.statSync(logPath);
     if (stat.size > 5 * 1024 * 1024) {
       const content = fs.readFileSync(logPath, 'utf-8');
@@ -84,7 +84,7 @@ function clearLog() {
 function loadConfig() {
   try {
     const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-    // Future version migration can go here
+    // 未来版本迁移逻辑可在此添加
     // if (cfg.version === '1.0') { migrateV1toV2(cfg); }
     return cfg;
   } catch (e) { return {}; }
@@ -132,7 +132,7 @@ function createWindow(dirPath) {
   });
   win.loadFile(path.join(__dirname, 'web', 'electron.html'));
 
-  // Hide instead of close (minimize to tray)
+  // 关闭时隐藏到托盘而非退出
   win.on('close', (e) => {
     if (!app.isQuitting) {
       e.preventDefault();
@@ -166,24 +166,24 @@ app.whenReady().then(() => {
 app.on('before-quit', () => { app.isQuitting = true; });
 
 app.on('window-all-closed', () => {
-  // Don't quit - keep running in tray
+  // 不退出，保持在托盘运行
 });
 
-// === Window ===
+// === 窗口控制 ===
 ipcMain.on('minimize-window', () => mainWindow.minimize());
 ipcMain.on('maximize-window', () => { mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(); });
 ipcMain.on('close-window', () => { mainWindow.webContents.send('ask-close-action'); });
 ipcMain.on('hide-to-tray', () => { mainWindow.hide(); });
 ipcMain.on('quit-app', () => { app.isQuitting = true; app.quit(); });
 
-// === Tray ===
+// === 系统托盘 ===
 function createTray() {
   const iconPath = path.join(__dirname, 'web', 'icon-16.png');
   let trayIcon;
   if (fs.existsSync(iconPath)) {
     trayIcon = nativeImage.createFromPath(iconPath);
   } else {
-    // Fallback: create simple icon
+    // 备用方案：创建空图标
     trayIcon = nativeImage.createEmpty();
   }
 
@@ -214,7 +214,7 @@ function createTray() {
   });
 }
 
-// === Workspace ===
+// === 工作目录 ===
 ipcMain.handle('get-workspace', () => workspaceDir);
 
 ipcMain.handle('set-workspace', async () => {
@@ -232,7 +232,7 @@ ipcMain.handle('open-workspace-path', (e, p) => {
   shell.openPath(p);
 });
 
-// === File System ===
+// === 文件系统 ===
 ipcMain.handle('read-dir', (e, dirPath) => {
   const target = dirPath || workspaceDir;
   if (!target || !fs.existsSync(target)) return [];
@@ -385,11 +385,11 @@ ipcMain.handle('move-file', (e, sourcePath, destPath) => {
   }
 });
 
-// === System Clipboard (Windows Explorer) ===
+// === 系统剪贴板（Windows资源管理器）===
 function runPs(script) {
   const tmpFile = path.join(os.tmpdir(), `clip_${Date.now()}.ps1`);
-  // Write without BOM - PowerShell handles UTF-8 fine without it
-  // Using Buffer to avoid Node's UTF-8 BOM behavior
+  // 不使用BOM - PowerShell可以正常处理UTF-8
+  // 使用Buffer避免Node.js的UTF-8 BOM行为
   const buf = Buffer.from(script, 'utf-8');
   fs.writeFileSync(tmpFile, buf);
   try {
@@ -404,7 +404,7 @@ function runPs(script) {
 
 ipcMain.handle('clipboard-write-files', (e, filePaths) => {
   try {
-    // Write each path to a temp file, then use PowerShell to read and add to clipboard
+    // 将路径写入临时文件，然后用PowerShell读取并添加到剪贴板
     const listFile = path.join(os.tmpdir(), `clip_paths_${Date.now()}.txt`);
     fs.writeFileSync(listFile, filePaths.join('\n'), 'utf-16le');
     
@@ -417,7 +417,7 @@ foreach ($p in $paths) { $files.Add($p) | Out-Null }
     writeLog('剪贴板写入', filePaths.join(', '));
     runPs(script);
     
-    // Cleanup
+    // 清理临时文件
     try { fs.unlinkSync(listFile); } catch (e) {}
     return true;
   } catch (err) {
@@ -469,7 +469,7 @@ if ($list -and $list.Count -gt 0) { Write-Output 'yes' } else { Write-Output 'no
   }
 });
 
-// === Drag files to Explorer ===
+// === 拖拽文件到资源管理器 ===
 ipcMain.on('start-drag', (e, filePath) => {
   try {
     e.sender.startDrag({ file: filePath, icon: path.join(__dirname, 'web', 'icon-32.png') });
@@ -480,12 +480,12 @@ ipcMain.on('start-drag', (e, filePath) => {
 
 ipcMain.handle('get-home-dir', () => os.homedir());
 
-// === Logging ===
+// === 日志操作 ===
 ipcMain.handle('get-log', (e, maxLines) => readLog(maxLines));
 ipcMain.handle('get-log-size', () => getLogSize());
 ipcMain.handle('clear-log', () => { clearLog(); return true; });
 
-// === Config Export/Import ===
+// === 配置导入导出 ===
 ipcMain.handle('export-config', async () => {
   const result = await dialog.showSaveDialog(mainWindow, {
     title: '导出配置',
@@ -526,7 +526,7 @@ ipcMain.handle('import-config', async () => {
     const formatVer = data.formatVersion || data.version;
     if (!formatVer) return null;
 
-    // Restore settings (forward-compatible: read what we understand, ignore the rest)
+    // 恢复设置（向前兼容：读取能识别的字段，忽略其他）
     const cfg = loadConfig();
     if (data.workspace) cfg.workspace = data.workspace;
     if (data.linkedFolders) cfg.linkedFolders = data.linkedFolders;
@@ -538,7 +538,7 @@ ipcMain.handle('import-config', async () => {
     }
     saveConfig(cfg);
 
-    // Restore metadata
+    // 恢复元数据
     if (data.metadata) {
       saveMeta(data.metadata);
     }
@@ -604,7 +604,7 @@ ipcMain.handle('add-linked-folder-path', (e, folderPath) => {
   }
 });
 
-// === Metadata (tags, notes) ===
+// === 元数据（标签、备注）===
 ipcMain.handle('get-meta', (e, filePath) => {
   const meta = loadMeta();
   return meta[filePath] || { tags: '', notes: '' };
@@ -617,7 +617,7 @@ ipcMain.handle('save-meta', (e, filePath, data) => {
   return true;
 });
 
-// === Stats ===
+// === 统计信息 ===
 ipcMain.handle('get-stats', (e, dirPath) => {
   const target = dirPath || workspaceDir;
   if (!target || !fs.existsSync(target)) return { files: 0, dirs: 0, totalSize: 0 };
@@ -645,7 +645,7 @@ ipcMain.handle('get-stats', (e, dirPath) => {
   return { files, dirs, totalSize };
 });
 
-// === REST API Server (for AI agents) ===
+// === REST API服务器（供AI Agent调用）===
 const http = require('http');
 
 const DEFAULT_API_PORT = 5000;
@@ -759,7 +759,7 @@ function startApiServer() {
   }
 
   apiServer = http.createServer(async (req, res) => {
-    // CORS preflight
+    // CORS预检请求
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
@@ -773,17 +773,17 @@ function startApiServer() {
     const pathname = decodeURIComponent(url.pathname);
 
     try {
-      // Health check
+      // 健康检查
       if (pathname === '/api/health') {
         return sendJson(res, 200, { status: 'ok', version: APP_VERSION, workspace: workspaceDir, port });
       }
 
-      // API docs
+      // API文档
       if (pathname === '/api/docs') {
         return sendJson(res, 200, { endpoints: API_ROUTES, example: 'curl http://localhost:' + port + '/api/workspace' });
       }
 
-      // Workspace info
+      // 工作目录信息
       if (pathname === '/api/workspace' && req.method === 'GET') {
         if (!workspaceDir) return sendJson(res, 200, { workspace: null, message: '未设置工作目录' });
         const cfg = loadConfig();
@@ -792,7 +792,7 @@ function startApiServer() {
         return sendJson(res, 200, { workspace: workspaceDir, linkedFolders: linked.map(l => ({ name: l.name, path: l.path })), metaCount: Object.keys(meta).length });
       }
 
-      // List files
+      // 列出文件
       if (pathname === '/api/files' && req.method === 'GET') {
         if (!workspaceDir) return sendJson(res, 400, { error: '未设置工作目录' });
         const subPath = url.searchParams.get('path') || '';
@@ -804,7 +804,7 @@ function startApiServer() {
         return sendJson(res, 200, { path: subPath || '.', files });
       }
 
-      // Read file / get file info
+      // 读取文件/获取文件信息
       if (pathname.startsWith('/api/files/') && req.method === 'GET') {
         const filePath = decodeURIComponent(pathname.slice('/api/files/'.length));
         const fullPath = resolveFilePath(filePath);
@@ -836,7 +836,7 @@ function startApiServer() {
         }
       }
 
-      // Search
+      // 搜索文件
       if (pathname === '/api/search' && req.method === 'POST') {
         if (!workspaceDir) return sendJson(res, 400, { error: '未设置工作目录' });
         const body = await parseBody(req);
@@ -848,7 +848,7 @@ function startApiServer() {
         return sendJson(res, 200, { keyword, count: results.length, results });
       }
 
-      // Get meta
+      // 获取元数据
       if (pathname === '/api/meta' && req.method === 'POST') {
         const body = await parseBody(req);
         if (!body.path) return sendJson(res, 400, { error: '请提供path参数' });
@@ -858,7 +858,7 @@ function startApiServer() {
         return sendJson(res, 200, { path: body.path, meta: meta[fullPath] || { tags: '', notes: '' } });
       }
 
-      // Save meta
+      // 保存元数据
       if (pathname === '/api/meta' && req.method === 'PUT') {
         const body = await parseBody(req);
         if (!body.path) return sendJson(res, 400, { error: '请提供path参数' });
@@ -871,7 +871,7 @@ function startApiServer() {
         return sendJson(res, 200, { success: true });
       }
 
-      // Create folder
+      // 创建文件夹
       if (pathname === '/api/create-folder' && req.method === 'POST') {
         if (!workspaceDir) return sendJson(res, 400, { error: '未设置工作目录' });
         const body = await parseBody(req);
@@ -884,7 +884,7 @@ function startApiServer() {
         return sendJson(res, 200, { success: true, path: path.relative(workspaceDir, folderPath).replace(/\\/g, '/') });
       }
 
-      // Delete
+      // 删除文件
       if (pathname === '/api/delete' && req.method === 'POST') {
         const body = await parseBody(req);
         if (!body.path) return sendJson(res, 400, { error: '请提供path参数' });
@@ -898,7 +898,7 @@ function startApiServer() {
         return sendJson(res, 200, { success: true });
       }
 
-      // Rename
+      // 重命名
       if (pathname === '/api/rename' && req.method === 'POST') {
         const body = await parseBody(req);
         if (!body.path || !body.newName) return sendJson(res, 400, { error: '请提供path和newName参数' });
@@ -912,7 +912,7 @@ function startApiServer() {
         return sendJson(res, 200, { success: true, newPath: path.relative(workspaceDir, newPath).replace(/\\/g, '/') });
       }
 
-      // Stats
+      // 统计信息
       if (pathname === '/api/stats' && req.method === 'GET') {
         if (!workspaceDir) return sendJson(res, 400, { error: '未设置工作目录' });
         const subPath = url.searchParams.get('path') || '';
