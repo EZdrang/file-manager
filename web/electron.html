@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' file:; font-src 'self'">
+  <link rel="icon" type="image/png" href="icon-48.png">
+  <title>资料管理系统2.0</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="titlebar">
+    <span class="titlebar-title" id="titlebarTitle">资料管理系统2.0</span>
+    <div class="titlebar-controls">
+      <button class="titlebar-btn" id="minimize">─</button>
+      <button class="titlebar-btn" id="maximize">☐</button>
+      <button class="titlebar-btn close" id="close">✕</button>
+    </div>
+  </div>
+
+  <div class="menubar">
+    <div class="menu-item">
+      <span>文件</span>
+      <div class="menu-dropdown">
+        <button class="menu-dropdown-item" id="menuSetWorkspace">📂 设置工作目录</button>
+        <button class="menu-dropdown-item" id="menuOpenFolder">📁 在资源管理器中打开</button>
+        <div class="menu-separator"></div>
+        <button class="menu-dropdown-item" id="menuNewFolder">新建文件夹 <span class="shortcut">Ctrl+N</span></button>
+      </div>
+    </div>
+    <div class="menu-item">
+      <span>编辑</span>
+      <div class="menu-dropdown">
+        <button class="menu-dropdown-item" id="menuRename">重命名 <span class="shortcut">F2</span></button>
+        <button class="menu-dropdown-item" id="menuDelete">删除 <span class="shortcut">Delete</span></button>
+        <div class="menu-separator"></div>
+        <button class="menu-dropdown-item" id="menuCopyPath">复制路径</button>
+      </div>
+    </div>
+    <div class="menu-item">
+      <span>查看</span>
+      <div class="menu-dropdown">
+        <button class="menu-dropdown-item" id="menuRefresh">刷新 <span class="shortcut">F5</span></button>
+        <div class="menu-separator"></div>
+        <button class="menu-dropdown-item" id="menuSortName">按名称排序</button>
+        <button class="menu-dropdown-item" id="menuSortSize">按大小排序</button>
+        <button class="menu-dropdown-item" id="menuSortDate">按日期排序</button>
+      </div>
+    </div>
+    <div class="menu-item">
+      <span>帮助</span>
+      <div class="menu-dropdown">
+        <button class="menu-dropdown-item" id="menuAbout">关于</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="app" id="appZoom">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <span class="logo-icon">📁</span>
+          <span class="logo-text">资料库</span>
+        </div>
+        <button class="new-folder-btn" id="newFolderBtn" title="链接外部文件夹">+</button>
+      </div>
+
+      <div class="sidebar-tree-container" id="sidebarTreeContainer">
+        <div id="fileTree" class="file-tree"></div>
+        <div id="emptyHint" class="empty-hint" style="display:none;">
+          <p>未设置工作目录</p>
+          <button class="set-workspace-btn" id="setWorkspaceHint">选择目录</button>
+        </div>
+      </div>
+
+      <div class="sidebar-bottom">
+        <button class="theme-toggle-btn" id="themeToggle">
+          <span id="themeIcon">🌙</span>
+          <span id="themeText">暗色主题</span>
+        </button>
+        <button class="settings-btn" id="settingsBtn">⚙️ 设置</button>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="toolbar">
+        <button class="back-btn" id="backBtn" title="返回上一层 (Backspace)">⬆️</button>
+        <div class="search-box" id="searchBox">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="searchInput" placeholder="搜索文件...">
+          <span class="search-clear" id="searchClear" title="右键清空">✕</span>
+          <div class="search-tooltip" id="searchTooltip">
+            <div class="search-tooltip-title">高级搜索语法</div>
+            <div class="search-tooltip-item"><code>#标签</code> 按标签筛选 <span class="search-tooltip-example">#重要 ＃重要</span></div>
+            <div class="search-tooltip-item"><code>!扩展名</code> 按文件类型筛选 <span class="search-tooltip-example">!py ！py</span></div>
+            <div class="search-tooltip-item"><code>@备注</code> 按备注内容筛选 <span class="search-tooltip-example">@待处理 ＠待处理</span></div>
+            <div class="search-tooltip-item"><code>yaml:key</code> YAML标签筛选 <span class="search-tooltip-example">yaml：category</span></div>
+            <div class="search-tooltip-sep"></div>
+            <div class="search-tooltip-item"><code>空格</code> 多条件AND <span class="search-tooltip-example">#重要 !py</span></div>
+            <div class="search-tooltip-item"><code>|｜</code> 多条件OR <span class="search-tooltip-example">#重要|#紧急</span></div>
+            <div class="search-tooltip-item"><code>-</code> 排除条件 <span class="search-tooltip-example">-#废弃 -!exe</span></div>
+            <div class="search-tooltip-sep"></div>
+            <div class="search-tooltip-item" style="color:var(--text-muted);">Windows路径自动跳转目录</div>
+          </div>
+        </div>
+        <div class="breadcrumb" id="breadcrumb"></div>
+      </div>
+
+      <div class="tab-bar" id="tabBar">
+        <div class="tabs-container" id="tabsContainer"></div>
+        <button class="tab-add-btn" id="tabAddBtn" title="新标签页">+</button>
+      </div>
+
+      <div class="file-table-container">
+        <table class="file-table">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>标签</th>
+              <th>大小</th>
+              <th>修改时间</th>
+            </tr>
+          </thead>
+          <tbody id="fileTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="status-bar">
+        <span id="statusText">就绪</span>
+      </div>
+    </div>
+
+    <div class="detail-panel" id="detailPanel" style="display:none">
+      <div class="panel-header">
+        <h3 id="detailTitle">详情</h3>
+        <button class="close-panel-btn" id="closePanel">×</button>
+      </div>
+
+      <div class="preview-area" id="previewArea">
+        <span class="preview-placeholder">选择文件查看预览</span>
+      </div>
+
+      <div class="info-section">
+        <h4>文件信息</h4>
+        <div class="info-content" id="fileInfo"></div>
+      </div>
+
+      <div class="edit-section">
+        <h4>标签与备注</h4>
+        <div class="form-group">
+          <label>标签</label>
+          <input type="text" id="tagsInput" placeholder="多个标签用逗号分隔">
+        </div>
+        <div class="form-group">
+          <label>备注</label>
+          <textarea id="notesInput" rows="3" placeholder="添加备注..."></textarea>
+        </div>
+        <div class="btn-group">
+          <button class="save-btn" id="saveBtn">保存</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">提示</h3>
+        <button class="modal-close" id="modalClose">×</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-footer" id="modalFooter"></div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toastContainer"></div>
+
+  <div class="wizard-overlay" id="wizardOverlay" style="display:none;">
+    <div class="wizard-container">
+      <div class="wizard-steps" id="wizardSteps">
+        <div class="wizard-step active" data-step="1">
+          <div class="wizard-step-icon">📁</div>
+          <h2>欢迎使用资料管理系统2.0</h2>
+          <p class="wizard-desc">一个现代化的文件管理工具，帮助你高效管理本地文件。</p>
+          <div class="wizard-features">
+            <div class="wizard-feature"><span>📂</span><span>工作目录管理</span></div>
+            <div class="wizard-feature"><span>🏷️</span><span>文件标签与备注</span></div>
+            <div class="wizard-feature"><span>🔍</span><span>快速搜索</span></div>
+            <div class="wizard-feature"><span>🌙</span><span>暗色/亮色主题</span></div>
+          </div>
+        </div>
+        <div class="wizard-step" data-step="2">
+          <div class="wizard-step-icon">📂</div>
+          <h2>选择工作目录</h2>
+          <p class="wizard-desc">工作目录是你主要管理文件的位置，你可以随时更换。</p>
+          <div class="wizard-workspace-area" id="wizardWorkspaceArea">
+            <p class="wizard-workspace-hint">尚未选择目录</p>
+            <button class="wizard-btn secondary" id="wizardSelectDir">选择目录</button>
+          </div>
+        </div>
+        <div class="wizard-step" data-step="3">
+          <div class="wizard-step-icon">📥</div>
+          <h2>导入旧配置</h2>
+          <p class="wizard-desc">如果你在其他电脑上使用过本软件，可以导入之前的配置文件。</p>
+          <div class="wizard-import-area">
+            <button class="wizard-btn secondary" id="wizardImportConfig">选择配置文件</button>
+            <p class="wizard-import-hint">支持 .json 格式的配置文件</p>
+          </div>
+        </div>
+        <div class="wizard-step" data-step="4">
+          <div class="wizard-step-icon">🎨</div>
+          <h2>选择主题</h2>
+          <p class="wizard-desc">选择你喜欢的界面主题风格。</p>
+          <div class="wizard-theme-options">
+            <div class="wizard-theme-card active" data-theme="dark" id="wizardThemeDark">
+              <div class="wizard-theme-preview dark-preview">
+                <div class="wp-bar"></div>
+                <div class="wp-sidebar"></div>
+                <div class="wp-main"></div>
+              </div>
+              <span>暗色主题</span>
+            </div>
+            <div class="wizard-theme-card" data-theme="light" id="wizardThemeLight">
+              <div class="wizard-theme-preview light-preview">
+                <div class="wp-bar"></div>
+                <div class="wp-sidebar"></div>
+                <div class="wp-main"></div>
+              </div>
+              <span>亮色主题</span>
+            </div>
+          </div>
+        </div>
+        <div class="wizard-step" data-step="5">
+          <div class="wizard-step-icon">✅</div>
+          <h2>设置完成</h2>
+          <p class="wizard-desc">一切就绪！点击下方按钮开始使用。</p>
+          <div class="wizard-summary" id="wizardSummary"></div>
+        </div>
+      </div>
+
+      <div class="wizard-nav">
+        <button class="wizard-btn secondary" id="wizardPrev" style="visibility:hidden;">上一步</button>
+        <div class="wizard-dots" id="wizardDots">
+          <span class="dot active"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+          <span class="dot"></span>
+        </div>
+        <button class="wizard-btn primary" id="wizardNext">下一步</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

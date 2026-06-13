@@ -1,0 +1,45 @@
+{
+  "name": "file-database-manager",
+  "version": "2.1.0",
+  "description": "资料管理系统2.1",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "node build.js",
+    "dist": "electron-builder --win portable"
+  },
+  "author": "MiMo Code",
+  "license": "MIT",
+  "dependencies": {
+    "sql.js": "^1.14.1"
+  },
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.mimocode.filemanager",
+    "productName": "资料管理系统2.1",
+    "win": {
+      "target": ["nsis", "portable", "dir"],
+      "icon": "web/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "资料管理系统2.1",
+      "installerIcon": "web/icon.ico",
+      "uninstallerIcon": "web/icon.ico",
+      "installerHeaderIcon": "web/icon.ico",
+      "artifactName": "资料管理系统2.1_安装包.exe"
+    },
+    "portable": {
+      "artifactName": "资料管理系统2.1_单文件.exe"
+    },
+    "directories": {
+      "output": "release"
+    }
+  }
+}

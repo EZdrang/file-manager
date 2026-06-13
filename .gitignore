@@ -1,0 +1,23 @@
+﻿# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+release/
+
+# Logs
+*.log
+
+# OS files
+desktop.ini
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Temp files
+*.tmp
+*.bak
