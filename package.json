@@ -1,7 +1,7 @@
 {
   "name": "file-database-manager",
   "version": "2.2.0",
-  "description": "资料管理系统2.1",
+  "description": "资料管理系统2.2",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -17,7 +17,7 @@
   },
   "build": {
     "appId": "com.ezdrang.filemanager",
-    "productName": "资料管理系统2.1",
+    "productName": "资料管理系统2.2",
     "win": {
       "target": ["nsis", "portable", "dir"],
       "icon": "web/icon.ico"
@@ -27,14 +27,14 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "资料管理系统2.1",
+      "shortcutName": "资料管理系统2.2",
       "installerIcon": "web/icon.ico",
       "uninstallerIcon": "web/icon.ico",
       "installerHeaderIcon": "web/icon.ico",
-      "artifactName": "资料管理系统2.1_安装包.exe"
+      "artifactName": "file-manager-2.2-setup.exe"
     },
     "portable": {
-      "artifactName": "资料管理系统2.1_单文件.exe"
+      "artifactName": "file-manager-2.2-portable.exe"
     },
     "directories": {
       "output": "release"

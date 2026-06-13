@@ -836,6 +836,7 @@ async function openFileDetail(entry) {
 
   const previewArea = document.getElementById('previewArea');
   const imageTypes = ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'ico', 'svg', 'tiff'];
+  const videoTypes = ['mp4', 'webm', 'ogg'];
   const textTypes = [
     'txt', 'md', 'log', 'csv', 'json', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sql',
     'py', 'js', 'ts', 'jsx', 'tsx', 'java', 'c', 'cpp', 'h', 'cs', 'go', 'rs', 'rb', 'php', 'swift', 'kt', 'dart', 'lua', 'r',
@@ -845,6 +846,9 @@ async function openFileDetail(entry) {
 
   if (imageTypes.includes(ext)) {
     previewArea.innerHTML = `<img src="file:///${entry.path.replace(/\\/g, '/')}" alt="预览">`;
+  } else if (videoTypes.includes(ext)) {
+    const videoUrl = 'file:///' + entry.path.replace(/\\/g, '/');
+    previewArea.innerHTML = `<video src="${videoUrl}" controls autoplay style="max-width:100%;max-height:100%;border-radius:8px;">您的浏览器不支持视频预览</video>`;
   } else if (textTypes.includes(ext)) {
     const content = await api.readFileText(entry.path);
     if (content !== null) {
