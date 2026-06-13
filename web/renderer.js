@@ -72,7 +72,15 @@ function initEventListeners() {
   document.getElementById('maximize').addEventListener('click', () => api.maximize());
   document.getElementById('close').addEventListener('click', () => api.close());
 
-  document.getElementById('newFolderBtn').addEventListener('click', linkNewFolder);
+  document.getElementById('newFolderBtn').addEventListener('click', async () => {
+    const ws = await api.addWorkspace();
+    if (ws) {
+      workspaces = await api.getWorkspaces();
+      if (workspaces.length === 1) workspaceDir = ws.path;
+      await buildTree();
+      showToast(`已添加工作目录: ${ws.name}`, 'success');
+    }
+  });
   document.getElementById('settingsBtn').addEventListener('click', showSettings);
   document.getElementById('themeToggle').addEventListener('click', toggleTheme);
   document.getElementById('setWorkspaceHint').addEventListener('click', setWorkspace);
@@ -489,7 +497,7 @@ async function setWorkspace() {
 
 function updateTitle() {
   const name = workspaceDir ? workspaceDir.split(/[/\\]/).pop() : '未选择目录';
-  document.getElementById('titlebarTitle').textContent = `资料管理系统2.2 - ${name}`;
+  document.getElementById('titlebarTitle').textContent = `资料管理系统 - ${name}`;
 }
 
 // === 文件树（左侧边栏）===
@@ -1050,7 +1058,7 @@ function matchFile(entry, conditions, meta) {
 }
 
 async function advancedSearch(query) {
-  if (workspaces.length === 0) return;
+  if (workspaces.length === 0 && !workspaceDir) return;
   
   const conditions = parseSearchQuery(query);
   const hasSpecial = conditions.tags.length > 0 || conditions.exts.length > 0 || 
@@ -1067,22 +1075,27 @@ async function advancedSearch(query) {
   
   // 递归获取所有文件用于筛选
   async function collectFiles(dirPath) {
-    const entries = await api.readDir(dirPath);
-    for (const entry of entries) {
-      results.push(entry);
-      if (entry.isDir && results.length < 2000) {
-        await collectFiles(entry.path);
+    try {
+      const entries = await api.readDir(dirPath);
+      for (const entry of entries) {
+        results.push(entry);
+        if (entry.isDir && results.length < 2000) {
+          await collectFiles(entry.path);
+        }
       }
+    } catch (e) {
+      console.error('collectFiles error:', dirPath, e);
     }
   }
   
   // 收集所有工作目录文件
-  for (const ws of workspaces) {
+  const paths = workspaces.length > 0 ? workspaces.map(w => w.path).filter(Boolean) : [workspaceDir].filter(Boolean);
+  console.log('搜索目录:', paths);
+  for (const p of paths) {
     if (results.length >= 2000) break;
-    if (ws.path && fs.existsSync(ws.path)) {
-      await collectFiles(ws.path);
-    }
+    await collectFiles(p);
   }
+  console.log('收集文件总数:', results.length);
   
   // 获取所有文件的元数据
   const filtered = [];
@@ -1932,8 +1945,9 @@ function updateBreadcrumb(dirPath) {
 }
 
 // === 设置面板 ===
-function showSettings() {
+async function showSettings() {
   const settings = getSettings();
+  const appVersion = await api.getAppVersion();
   const modal = document.getElementById('modal');
   document.getElementById('modalTitle').textContent = '设置';
   document.getElementById('modalBody').innerHTML = `
@@ -1995,20 +2009,29 @@ function showSettings() {
       </div>
     </div>
     <div class="settings-group">
-      <div class="settings-group-title">工作目录（多目录模式）</div>
-      <div id="workspaceList" style="max-height:200px;overflow-y:auto;margin-bottom:8px;">
-        ${workspaces.map(ws => `
-          <div class="settings-row" style="padding:4px 0;border-bottom:1px solid var(--border);">
-            <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ws.path}">
-              ${ws.isPrimary ? '⭐' : '📁'} ${ws.name}
-            </span>
-            ${ws.isPrimary ? '<span style="font-size:10px;color:var(--accent);">主目录</span>' : ''}
-          </div>
-        `).join('')}
+      <div class="settings-group-title">主目录</div>
+      <div class="settings-row">
+        <label>当前主目录</label>
+        <span style="font-size:11px;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${workspaceDir || ''}">${workspaceDir ? workspaceDir.split(/[/\\]/).pop() : '未设置'}</span>
       </div>
       <div class="settings-row">
-        <button class="modal-btn secondary" style="flex:1;" id="addWorkspaceBtn">+ 添加目录</button>
+        <button class="modal-btn primary" style="width:100%;" onclick="closeModal();window._setWorkspace();">更换主目录</button>
       </div>
+    </div>
+    <div class="settings-group">
+      <div class="settings-group-title">关于</div>
+      <div class="settings-row">
+        <label>版本</label>
+        <span style="font-size:12px;color:var(--text-secondary);">v${appVersion}</span>
+      </div>
+      <div class="settings-row">
+        <label>作者</label>
+        <span style="font-size:12px;color:var(--text-secondary);">EZdrang</span>
+      </div>
+      <div class="settings-row">
+        <button class="modal-btn secondary" style="width:100%;" id="checkUpdateBtn">检查更新</button>
+      </div>
+      <div id="updateResult" style="font-size:11px;color:var(--text-muted);text-align:center;padding:4px;"></div>
     </div>
   `;
 
@@ -2017,14 +2040,26 @@ function showSettings() {
   document.getElementById('importConfigBtn').addEventListener('click', importConfig);
   document.getElementById('openApiSettingsBtn').addEventListener('click', showApiSettings);
   
-  document.getElementById('addWorkspaceBtn').addEventListener('click', async () => {
-    const ws = await api.addWorkspace();
-    if (ws) {
-      workspaces = await api.getWorkspaces();
-      if (workspaces.length === 1) workspaceDir = ws.path;
-      closeModal();
-      await buildTree();
-      showToast(`已添加: ${ws.name}`, 'success');
+  document.getElementById('checkUpdateBtn').addEventListener('click', async () => {
+    const btn = document.getElementById('checkUpdateBtn');
+    const result = document.getElementById('updateResult');
+    btn.textContent = '检查中...';
+    btn.disabled = true;
+    result.textContent = '';
+    
+    const info = await api.checkUpdate();
+    btn.textContent = '检查更新';
+    btn.disabled = false;
+    
+    if (info.error) {
+      result.textContent = `检查失败: ${info.error}`;
+      result.style.color = 'var(--danger)';
+    } else if (info.hasUpdate) {
+      result.innerHTML = `发现新版本 v${info.latestVersion}，<a href="#" onclick="require('electron').shell.openExternal('${info.releaseUrl}');return false;" style="color:var(--accent);">前往下载</a>`;
+      result.style.color = 'var(--success)';
+    } else {
+      result.textContent = `已是最新版本 v${info.currentVersion}`;
+      result.style.color = 'var(--success)';
     }
   });
 
@@ -2213,9 +2248,8 @@ function showAbout() {
   document.getElementById('modalBody').innerHTML = `
     <div style="text-align:center;padding:20px;">
       <div style="font-size:48px;margin-bottom:16px;">📁</div>
-      <h3 style="margin-bottom:8px;">资料管理系统2.2</h3>
-      <p style="color:var(--text-muted);font-size:13px;">版本 2.2.0</p>
-      <p style="color:var(--text-muted);font-size:13px;margin-top:8px;">Electron + 文件系统模式</p>
+      <h3 style="margin-bottom:8px;">资料管理系统</h3>
+      <p style="color:var(--text-muted);font-size:13px;margin-top:8px;">现代化本地文件管理工具</p>
       <p style="color:var(--text-muted);font-size:13px;">EZdrang 出品</p>
     </div>
   `;

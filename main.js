@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const APP_VERSION = '2.2';
+const APP_VERSION = '3.0';
 const CONFIG_DIR = app.getPath('userData');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const META_PATH = path.join(CONFIG_DIR, 'metadata.json');
@@ -236,7 +236,7 @@ function createTray() {
   }
 
   tray = new Tray(trayIcon);
-  tray.setToolTip('资料管理系统2.2');
+  tray.setToolTip('资料管理系统');
 
   const contextMenu = Menu.buildFromTemplate([
     { 
@@ -1048,3 +1048,45 @@ function startApiServer() {
 app.whenReady().then(() => {
   startApiServer();
 });
+
+// === GitHub更新检查 ===
+ipcMain.handle('check-update', async () => {
+  try {
+    const https = require('https');
+    const url = 'https://api.github.com/repos/EZdrang/file-manager/releases/latest';
+    
+    return new Promise((resolve) => {
+      const req = https.get(url, { 
+        headers: { 'User-Agent': 'FileManager-App' },
+        timeout: 10000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const release = JSON.parse(data);
+            const latestVersion = release.tag_name.replace('v', '');
+            const currentVersion = APP_VERSION;
+            const hasUpdate = latestVersion > currentVersion;
+            resolve({
+              hasUpdate,
+              currentVersion,
+              latestVersion,
+              releaseUrl: release.html_url,
+              releaseNotes: release.body || '',
+              publishedAt: release.published_at
+            });
+          } catch (e) {
+            resolve({ hasUpdate: false, error: '解析失败' });
+          }
+        });
+      });
+      req.on('error', () => resolve({ hasUpdate: false, error: '网络错误' }));
+      req.on('timeout', () => { req.destroy(); resolve({ hasUpdate: false, error: '超时' }); });
+    });
+  } catch (e) {
+    return { hasUpdate: false, error: e.message };
+  }
+});
+
+ipcMain.handle('get-app-version', () => APP_VERSION);
