@@ -15,7 +15,8 @@ const UNIVERSAL_LOG_NAME = '.资料管理系统.log';
 
 let mainWindow;
 let tray = null;
-let workspaceDir = null;
+let workspaceDir = null; // 主工作目录（保持兼容）
+let workspaces = []; // 所有工作目录 [{id, name, path, isPrimary}]
 
 // === 日志系统 ===
 function getLogPath() {
@@ -123,6 +124,37 @@ function saveMeta(meta) {
   fs.writeFileSync(META_PATH, JSON.stringify(meta, null, 2));
 }
 
+// === 工作目录管理 ===
+function loadWorkspaces() {
+  const cfg = loadConfig();
+  // 兼容旧版：将linkedFolders转为workspaces
+  if (cfg.linkedFolders && cfg.linkedFolders.length > 0 && !cfg.workspaces) {
+    cfg.workspaces = [
+      ...(cfg.workspace ? [{ id: 1, name: cfg.workspace.split(/[/\\]/).pop(), path: cfg.workspace, isPrimary: true }] : []),
+      ...cfg.linkedFolders.map((lf, i) => ({ ...lf, id: Date.now() + i, isPrimary: false }))
+    ];
+    delete cfg.linkedFolders;
+    saveConfig(cfg);
+  }
+  return cfg.workspaces || [];
+}
+
+function saveWorkspaces(ws) {
+  const cfg = loadConfig();
+  cfg.workspaces = ws;
+  // 同步更新主目录
+  const primary = ws.find(w => w.isPrimary);
+  if (primary) {
+    cfg.workspace = primary.path;
+    workspaceDir = primary.path;
+  }
+  saveConfig(cfg);
+}
+
+function getWorkspacePaths() {
+  return workspaces.map(w => w.path).filter(p => p && fs.existsSync(p));
+}
+
 function createWindow(dirPath) {
   const win = new BrowserWindow({
     width: 1400,
@@ -159,6 +191,14 @@ function createWindow(dirPath) {
 app.whenReady().then(() => {
   const cfg = loadConfig();
   if (cfg.workspace) workspaceDir = cfg.workspace;
+  
+  // 初始化工作目录列表
+  workspaces = loadWorkspaces();
+  if (workspaces.length === 0 && workspaceDir) {
+    workspaces = [{ id: 1, name: workspaceDir.split(/[/\\]/).pop(), path: workspaceDir, isPrimary: true }];
+    saveWorkspaces(workspaces);
+  }
+  
   mainWindow = createWindow();
   createTray();
   mainWindow.webContents.on('did-finish-load', () => {
@@ -236,6 +276,37 @@ ipcMain.handle('set-workspace', async () => {
   return workspaceDir;
 });
 
+ipcMain.handle('get-workspaces', () => workspaces);
+
+ipcMain.handle('add-workspace', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: '选择要添加的工作目录'
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  const folderPath = result.filePaths[0];
+  if (workspaces.some(w => w.path === folderPath)) return null;
+  const name = folderPath.split(/[/\\]/).pop();
+  const entry = { id: Date.now(), name, path: folderPath, isPrimary: workspaces.length === 0 };
+  workspaces.push(entry);
+  saveWorkspaces(workspaces);
+  return entry;
+});
+
+ipcMain.handle('remove-workspace', (e, id) => {
+  const ws = workspaces.find(w => w.id === id);
+  if (ws && ws.isPrimary) return false; // 不能删除主目录
+  workspaces = workspaces.filter(w => w.id !== id);
+  saveWorkspaces(workspaces);
+  return true;
+});
+
+ipcMain.handle('set-primary-workspace', (e, id) => {
+  workspaces = workspaces.map(w => ({ ...w, isPrimary: w.id === id }));
+  saveWorkspaces(workspaces);
+  return true;
+});
+
 ipcMain.handle('open-workspace-path', (e, p) => {
   shell.openPath(p);
 });
@@ -289,7 +360,7 @@ ipcMain.handle('get-file-stat', (e, filePath) => {
 });
 
 ipcMain.handle('search-files', (e, keyword) => {
-  if (!workspaceDir || !keyword) return [];
+  if (!keyword) return [];
   const results = [];
   const maxResults = 200;
 
@@ -319,7 +390,13 @@ ipcMain.handle('search-files', (e, keyword) => {
     } catch (e) {}
   }
 
-  walk(workspaceDir, 0);
+  // 搜索所有工作目录
+  const paths = getWorkspacePaths();
+  for (const p of paths) {
+    if (results.length >= maxResults) break;
+    walk(p, 0);
+  }
+
   return results;
 });
 

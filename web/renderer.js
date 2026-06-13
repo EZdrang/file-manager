@@ -9,6 +9,7 @@ let sortBy = 'name';
 let sortDir = 'asc';
 let searchTimeout = null;
 let linkedFolders = [];
+let workspaces = []; // 所有工作目录
 let dirHistory = [];
 let historyIndex = -1;
 let autoCollapse = true;
@@ -48,6 +49,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (workspaceDir) {
     currentDir = workspaceDir;
     linkedFolders = await api.getLinkedFolders();
+    workspaces = await api.getWorkspaces();
     await buildTree();
     tabs = [{ path: workspaceDir, name: workspaceDir.split(/[/\\]/).pop() || '根目录', scrollY: 0 }];
     activeTabIndex = 0;
@@ -497,105 +499,51 @@ async function buildTree() {
   tree.innerHTML = '';
 
   try {
-    // 工作目录根节点
-    if (workspaceDir) {
-      const rootName = workspaceDir.split(/[/\\]/).pop();
-      const rootItem = document.createElement('div');
-      rootItem.className = 'tree-node-item';
-      rootItem.style.paddingLeft = '8px';
-      rootItem.dataset.path = workspaceDir;
-      rootItem.innerHTML = `<span class="tree-arrow">▶</span><span class="tree-file-icon">📂</span><span class="tree-file-name">${rootName}</span>`;
+    // 显示所有工作目录
+    for (const ws of workspaces) {
+      const icon = ws.isPrimary ? '📂' : '📁';
+      const label = ws.isPrimary ? ws.name : `${ws.name}`;
+      const item = document.createElement('div');
+      item.className = 'tree-node-item';
+      item.style.paddingLeft = '8px';
+      item.dataset.path = ws.path;
+      item.dataset.workspaceId = ws.id;
+      item.innerHTML = `<span class="tree-arrow">▶</span><span class="tree-file-icon">${icon}</span><span class="tree-file-name">${label}</span>`;
 
-      const rootChildren = document.createElement('div');
-      rootChildren.className = 'tree-children';
-      rootChildren.style.display = 'none';
+      const childrenEl = document.createElement('div');
+      childrenEl.className = 'tree-children';
+      childrenEl.style.display = 'none';
 
-      rootItem.addEventListener('click', async (e) => {
+      item.addEventListener('click', async (e) => {
         e.stopPropagation();
         document.querySelectorAll('.tree-node-item').forEach(n => n.classList.remove('active'));
-        rootItem.classList.add('active');
-        const arrow = rootItem.querySelector('.tree-arrow');
-        const isOpen = rootChildren.style.display !== 'none';
+        item.classList.add('active');
+        const arrow = item.querySelector('.tree-arrow');
+        const isOpen = childrenEl.style.display !== 'none';
         if (isOpen) {
-          rootChildren.style.display = 'none';
+          childrenEl.style.display = 'none';
           arrow.classList.remove('expanded');
         } else {
-          if (rootChildren.children.length === 0) {
-            await loadChildren(rootChildren, workspaceDir, 1, false);
+          if (childrenEl.children.length === 0) {
+            await loadChildren(childrenEl, ws.path, 1, !ws.isPrimary);
           }
-          rootChildren.style.display = 'block';
+          childrenEl.style.display = 'block';
           arrow.classList.add('expanded');
         }
-        currentDir = workspaceDir;
-        tabs[activeTabIndex] = { ...tabs[activeTabIndex], path: workspaceDir, name: workspaceDir.split(/[/\\]/).pop() || '根目录' };
+        currentDir = ws.path;
+        tabs[activeTabIndex] = { ...tabs[activeTabIndex], path: ws.path, name: ws.name };
         renderTabs();
-        await loadDir(workspaceDir);
-        updateBreadcrumb(workspaceDir);
+        await loadDir(ws.path);
+        updateBreadcrumb(ws.path);
       });
 
-      rootItem.addEventListener('contextmenu', (e) => {
+      item.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        showTreeContextMenu(e, workspaceDir, rootName);
+        showWorkspaceContextMenu(e, ws);
       });
 
-      rootItem.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        showTreeContextMenu(e, workspaceDir, workspaceDir.split(/[/\\]/).pop());
-      });
-
-      tree.appendChild(rootItem);
-      tree.appendChild(rootChildren);
-    }
-
-    // 链接的外部文件夹混入显示
-    if (linkedFolders.length > 0) {
-      for (const lf of linkedFolders) {
-        const item = document.createElement('div');
-        item.className = 'tree-node-item';
-        item.style.paddingLeft = '8px';
-        item.dataset.path = lf.path;
-        item.innerHTML = `<span class="tree-arrow">▶</span><span class="tree-file-icon">🔗</span><span class="tree-file-name">${lf.name}</span>`;
-
-        const childrenEl = document.createElement('div');
-        childrenEl.className = 'tree-children';
-        childrenEl.style.display = 'none';
-
-        item.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          document.querySelectorAll('.tree-node-item').forEach(n => n.classList.remove('active'));
-          item.classList.add('active');
-          const arrow = item.querySelector('.tree-arrow');
-          const isOpen = childrenEl.style.display !== 'none';
-          if (isOpen) {
-            childrenEl.style.display = 'none';
-            arrow.classList.remove('expanded');
-          } else {
-            if (childrenEl.children.length === 0) {
-              await loadChildren(childrenEl, lf.path, 1, true);
-            }
-            childrenEl.style.display = 'block';
-            arrow.classList.add('expanded');
-          }
-          currentDir = lf.path;
-          tabs[activeTabIndex] = { ...tabs[activeTabIndex], path: lf.path, name: lf.name };
-          renderTabs();
-          await loadDir(lf.path);
-          updateBreadcrumb(lf.path);
-        });
-
-        item.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          showLinkedFolderContextMenu(e, lf);
-        });
-
-        item.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          showLinkedFolderContextMenu(e, lf);
-        });
-
-        tree.appendChild(item);
-        tree.appendChild(childrenEl);
-      }
+      tree.appendChild(item);
+      tree.appendChild(childrenEl);
     }
   } catch (err) {
     console.error('buildTree error:', err);
@@ -1102,7 +1050,7 @@ function matchFile(entry, conditions, meta) {
 }
 
 async function advancedSearch(query) {
-  if (!workspaceDir) return;
+  if (workspaces.length === 0) return;
   
   const conditions = parseSearchQuery(query);
   const hasSpecial = conditions.tags.length > 0 || conditions.exts.length > 0 || 
@@ -1115,7 +1063,6 @@ async function advancedSearch(query) {
   }
   
   // Otherwise, do client-side filtering
-  const allEntries = await api.readDir(workspaceDir);
   const results = [];
   
   // 递归获取所有文件用于筛选
@@ -1129,7 +1076,13 @@ async function advancedSearch(query) {
     }
   }
   
-  await collectFiles(workspaceDir);
+  // 收集所有工作目录文件
+  for (const ws of workspaces) {
+    if (results.length >= 2000) break;
+    if (ws.path && fs.existsSync(ws.path)) {
+      await collectFiles(ws.path);
+    }
+  }
   
   // 获取所有文件的元数据
   const filtered = [];
@@ -1586,6 +1539,59 @@ function showLinkedFolderContextMenu(e, lf) {
   closeMenuOnClick(menu);
 }
 
+function showWorkspaceContextMenu(e, ws) {
+  const existing = document.querySelector('.context-menu');
+  if (existing) existing.remove();
+
+  const menu = document.createElement('div');
+  menu.className = 'context-menu';
+
+  const items = [
+    { icon: '📂', label: '打开', action: () => { currentDir = ws.path; loadDir(ws.path); } },
+    { icon: '🪟', label: '在资源管理器中打开', action: () => api.openPath(ws.path) },
+    { icon: '📋', label: '复制路径', action: () => { navigator.clipboard.writeText(ws.path); showToast('路径已复制', 'success'); } },
+  ];
+
+  if (!ws.isPrimary) {
+    items.push({ sep: true });
+    items.push({ icon: '⭐', label: '设为主目录', action: async () => {
+      await api.setPrimaryWorkspace(ws.id);
+      workspaces = await api.getWorkspaces();
+      workspaceDir = workspaces.find(w => w.isPrimary)?.path;
+      await buildTree();
+      showToast('已设为主目录', 'success');
+    }});
+  }
+
+  if (!ws.isPrimary) {
+    items.push({ icon: '🗑️', label: '移除此目录', cls: 'danger', action: async () => {
+      if (confirm(`确定移除工作目录 "${ws.name}" 吗？`)) {
+        await api.removeWorkspace(ws.id);
+        workspaces = await api.getWorkspaces();
+        await buildTree();
+        showToast('已移除', 'success');
+      }
+    }});
+  }
+
+  for (const item of items) {
+    if (item.sep) {
+      const sep = document.createElement('div');
+      sep.className = 'ctx-menu-sep';
+      menu.appendChild(sep);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = `ctx-menu-item ${item.cls || ''}`;
+      btn.innerHTML = `<span>${item.icon}</span><span>${item.label}</span>`;
+      btn.addEventListener('click', () => { menu.remove(); item.action(); });
+      menu.appendChild(btn);
+    }
+  }
+
+  positionMenu(menu, e);
+  closeMenuOnClick(menu);
+}
+
 function showTreeContextMenu(e, dirPath, dirName) {
   const existing = document.querySelector('.context-menu');
   if (existing) existing.remove();
@@ -1989,13 +1995,19 @@ function showSettings() {
       </div>
     </div>
     <div class="settings-group">
-      <div class="settings-group-title">工作目录</div>
-      <div class="settings-row">
-        <label>当前目录</label>
-        <span style="font-size:11px;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${workspaceDir || ''}">${workspaceDir ? workspaceDir.split(/[/\\]/).pop() : '未设置'}</span>
+      <div class="settings-group-title">工作目录（多目录模式）</div>
+      <div id="workspaceList" style="max-height:200px;overflow-y:auto;margin-bottom:8px;">
+        ${workspaces.map(ws => `
+          <div class="settings-row" style="padding:4px 0;border-bottom:1px solid var(--border);">
+            <span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${ws.path}">
+              ${ws.isPrimary ? '⭐' : '📁'} ${ws.name}
+            </span>
+            ${ws.isPrimary ? '<span style="font-size:10px;color:var(--accent);">主目录</span>' : ''}
+          </div>
+        `).join('')}
       </div>
       <div class="settings-row">
-        <button class="modal-btn primary" style="width:100%;" onclick="closeModal();window._setWorkspace();">更换工作目录</button>
+        <button class="modal-btn secondary" style="flex:1;" id="addWorkspaceBtn">+ 添加目录</button>
       </div>
     </div>
   `;
@@ -2004,6 +2016,17 @@ function showSettings() {
   document.getElementById('exportConfigBtn').addEventListener('click', exportConfig);
   document.getElementById('importConfigBtn').addEventListener('click', importConfig);
   document.getElementById('openApiSettingsBtn').addEventListener('click', showApiSettings);
+  
+  document.getElementById('addWorkspaceBtn').addEventListener('click', async () => {
+    const ws = await api.addWorkspace();
+    if (ws) {
+      workspaces = await api.getWorkspaces();
+      if (workspaces.length === 1) workspaceDir = ws.path;
+      closeModal();
+      await buildTree();
+      showToast(`已添加: ${ws.name}`, 'success');
+    }
+  });
 
   const toggleEl = document.getElementById('settingAutoCollapse');
   toggleEl.addEventListener('click', function(e) { e.stopPropagation(); this.classList.toggle('on'); });

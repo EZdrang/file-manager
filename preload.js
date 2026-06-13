@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   addLinkedFolderPath: (folderPath) => ipcRenderer.invoke('add-linked-folder-path', folderPath),
   removeLinkedFolder: (id) => ipcRenderer.invoke('remove-linked-folder', id),
   checkPath: (targetPath) => ipcRenderer.invoke('check-path', targetPath),
+  
+  // 工作目录管理
+  getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
+  addWorkspace: () => ipcRenderer.invoke('add-workspace'),
+  removeWorkspace: (id) => ipcRenderer.invoke('remove-workspace', id),
+  setPrimaryWorkspace: (id) => ipcRenderer.invoke('set-primary-workspace', id),
 
   getLog: (maxLines) => ipcRenderer.invoke('get-log', maxLines),
   getLogSize: () => ipcRenderer.invoke('get-log-size'),
