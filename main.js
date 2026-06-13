@@ -1,10 +1,10 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const APP_VERSION = '3.0';
+const APP_VERSION = '3.1';
 const CONFIG_DIR = app.getPath('userData');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const META_PATH = path.join(CONFIG_DIR, 'metadata.json');
@@ -51,20 +51,6 @@ function copyDirRecursiveSync(src, dest) {
       fs.copyFileSync(srcPath, destPath);
     }
   }
-}
-
-function moveDirRecursiveSync(src, dest) {
-  fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      moveDirRecursiveSync(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-  fs.rmSync(src, { recursive: true, force: true });
 }
 
 async function performUndo() {
@@ -126,7 +112,7 @@ async function performRedo() {
     switch (action.type) {
       case 'delete': {
         const name = action.name;
-        const escaped = action.originalPath.replace(/'/g, "''");
+        const escaped = action.originalPath.replace(/'/g, "''").replace(/"/g, '""');
         const stat = fs.statSync(action.originalPath);
         const method = stat.isDirectory() ? 'DeleteDirectory' : 'DeleteFile';
         // 先备份再删除
@@ -168,16 +154,18 @@ async function performRedo() {
 const fileWatchers = new Map(); // dirPath -> watcher
 const filePollers = new Map(); // dirPath -> { timer, lastMtime }
 let watchDebounceTimer = null;
-let watchIgnoreSelf = false;
+let watchIgnoreCount = 0;
 
-function notifyChange(dirPath, eventType, filename) {
-  if (watchIgnoreSelf) return;
-  if (watchDebounceTimer) clearTimeout(watchDebounceTimer);
-  watchDebounceTimer = setTimeout(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('file-changed', { dir: dirPath, event: eventType, file: filename || '' });
-    }
-  }, 500);
+function ignoreSelfOperations(callback) {
+  watchIgnoreCount++;
+  try {
+    const result = callback();
+    setTimeout(() => { watchIgnoreCount = Math.max(0, watchIgnoreCount - 1); }, 300);
+    return result;
+  } catch (e) {
+    watchIgnoreCount = Math.max(0, watchIgnoreCount - 1);
+    throw e;
+  }
 }
 
 function startWatching(dirPath) {
@@ -189,6 +177,9 @@ function startWatching(dirPath) {
     const watcher = fs.watch(dirPath, { persistent: false }, (eventType, filename) => {
       notifyChange(dirPath, eventType, filename);
     });
+    watcher.on('error', () => {
+      fileWatchers.delete(dirPath);
+    });
     fileWatchers.set(dirPath, watcher);
   } catch (e) {}
 
@@ -196,7 +187,7 @@ function startWatching(dirPath) {
   try {
     let lastMtime = fs.statSync(dirPath).mtimeMs;
     const timer = setInterval(() => {
-      if (watchIgnoreSelf) return;
+      if (watchIgnoreCount > 0) return;
       try {
         const currentMtime = fs.statSync(dirPath).mtimeMs;
         if (currentMtime !== lastMtime) {
@@ -225,14 +216,13 @@ function stopWatching(dirPath) {
 }
 
 function ignoreSelfOperations(callback) {
-  watchIgnoreSelf = true;
+  watchIgnoreCount++;
   try {
     const result = callback();
-    // 短暂忽略，让fs.watch回调跳过自身操作触发的事件
-    setTimeout(() => { watchIgnoreSelf = false; }, 300);
+    setTimeout(() => { watchIgnoreCount = Math.max(0, watchIgnoreCount - 1); }, 300);
     return result;
   } catch (e) {
-    watchIgnoreSelf = false;
+    watchIgnoreCount = Math.max(0, watchIgnoreCount - 1);
     throw e;
   }
 }
@@ -319,9 +309,13 @@ function loadConfig() {
 }
 
 function saveConfig(cfg) {
-  cfg.version = APP_VERSION;
-  cfg.lastModified = new Date().toISOString();
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  try {
+    cfg.version = APP_VERSION;
+    cfg.lastModified = new Date().toISOString();
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
+  } catch (e) {
+    console.error('保存配置失败:', e.message);
+  }
 }
 
 function loadLinkedFolders() {
@@ -340,7 +334,11 @@ function loadMeta() {
 }
 
 function saveMeta(meta) {
-  fs.writeFileSync(META_PATH, JSON.stringify(meta, null, 2));
+  try {
+    fs.writeFileSync(META_PATH, JSON.stringify(meta, null, 2));
+  } catch (e) {
+    console.error('保存元数据失败:', e.message);
+  }
 }
 
 // === 工作目录管理 ===
@@ -525,6 +523,8 @@ ipcMain.handle('add-workspace', async () => {
 });
 
 ipcMain.handle('add-workspace-path', (e, folderPath) => {
+  if (typeof folderPath !== 'string' || !folderPath.trim()) return null;
+  if (!fs.existsSync(folderPath)) return null;
   if (workspaces.some(w => w.path === folderPath)) return null;
   const name = folderPath.split(/[/\\]/).pop();
   const entry = { id: Date.now(), name, path: folderPath, isPrimary: workspaces.length === 0 };
@@ -557,6 +557,10 @@ ipcMain.handle('set-primary-workspace', (e, id) => {
 });
 
 ipcMain.handle('save-workspace-order', (e, newOrder) => {
+  if (!Array.isArray(newOrder)) return false;
+  // 校验每个元素必须有 id, name, path
+  const valid = newOrder.every(w => w && typeof w.id === 'number' && typeof w.name === 'string' && typeof w.path === 'string');
+  if (!valid) return false;
   workspaces = newOrder;
   saveWorkspaces(workspaces);
   return true;
@@ -568,28 +572,33 @@ ipcMain.handle('open-workspace-path', (e, p) => {
 
 ipcMain.handle('open-terminal', (e, dirPath) => {
   try {
-    execSync(`start powershell -NoExit -Command "cd '${dirPath.replace(/'/g, "''")}'"`, { windowsHide: false });
+    const safePath = dirPath.replace(/'/g, "''").replace(/"/g, '""');
+    execSync(`start powershell -NoExit -Command "cd '${safePath}'"`, { windowsHide: false });
   } catch (e) {}
 });
 
 // === 远程目录挂载 ===
 ipcMain.handle('mount-remote', (e, { type, host, share, user, password, driveLetter }) => {
   try {
+    // 校验参数
+    if (typeof host !== 'string' || !host.trim()) return { success: false, error: '无效的服务器地址' };
+    if (type === 'smb' && typeof share !== 'string') return { success: false, error: '无效的共享名称' };
+    const letter = (typeof driveLetter === 'string' && /^[A-Z]$/i.test(driveLetter)) ? driveLetter.toUpperCase() : 'Z';
+    
     let uncPath;
     if (type === 'smb') {
-      uncPath = `\\\\${host}\\${share}`;
+      uncPath = `\\\\${host.trim()}\\${share.trim()}`;
     } else if (type === 'webdav') {
-      uncPath = host.startsWith('http') ? host : `http://${host}`;
+      uncPath = host.startsWith('http') ? host.trim() : `http://${host.trim()}`;
     } else {
       return { success: false, error: '不支持的类型' };
     }
 
-    const letter = driveLetter || 'Z';
     let cmd;
     if (type === 'smb' && user) {
-      cmd = `net use ${letter}: "${uncPath}" /user:${user} "${password || ''}" /persistent:no`;
-    } else if (type === 'smb') {
-      cmd = `net use ${letter}: "${uncPath}" /persistent:no`;
+      const safeUser = String(user).replace(/"/g, '""');
+      const safePass = String(password || '').replace(/"/g, '""');
+      cmd = `net use ${letter}: "${uncPath}" /user:"${safeUser}" "${safePass}" /persistent:no`;
     } else {
       cmd = `net use ${letter}: "${uncPath}" /persistent:no`;
     }
@@ -604,7 +613,9 @@ ipcMain.handle('mount-remote', (e, { type, host, share, user, password, driveLet
 
 ipcMain.handle('unmount-remote', (e, driveLetter) => {
   try {
-    execSync(`net use ${driveLetter}: /delete /y`, { encoding: 'utf-8', timeout: 10000, windowsHide: true });
+    const letter = (typeof driveLetter === 'string' && /^[A-Z]$/i.test(driveLetter)) ? driveLetter.toUpperCase() : null;
+    if (!letter) return { success: false, error: '无效的盘符' };
+    execSync(`net use ${letter}: /delete /y`, { encoding: 'utf-8', timeout: 10000, windowsHide: true });
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -627,7 +638,9 @@ ipcMain.handle('list-mounts', () => {
 });
 
 ipcMain.handle('open-external', (e, url) => {
-  shell.openExternal(url);
+  if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+    shell.openExternal(url);
+  }
 });
 
 ipcMain.handle('undo', () => {
@@ -648,7 +661,12 @@ ipcMain.handle('unwatch-dir', () => {
 
 // === 文件系统 ===
 ipcMain.handle('read-dir', (e, dirPath) => {
-  const target = dirPath || workspaceDir;
+  let target = dirPath || workspaceDir;
+  if (dirPath) {
+    const resolved = resolveFilePath(dirPath);
+    if (!resolved) return [];
+    target = resolved;
+  }
   if (!target || !fs.existsSync(target)) return [];
 
   try {
@@ -678,7 +696,9 @@ ipcMain.handle('read-dir', (e, dirPath) => {
 
 ipcMain.handle('read-file-text', (e, filePath) => {
   try {
-    return fs.readFileSync(filePath, 'utf-8').slice(0, 20000);
+    const resolved = resolveFilePath(filePath);
+    if (!resolved) return null;
+    return fs.readFileSync(resolved, 'utf-8').slice(0, 20000);
   } catch (e) {
     return null;
   }
@@ -686,7 +706,9 @@ ipcMain.handle('read-file-text', (e, filePath) => {
 
 ipcMain.handle('read-file-buffer', (e, filePath) => {
   try {
-    const data = fs.readFileSync(filePath);
+    const resolved = resolveFilePath(filePath);
+    if (!resolved) return null;
+    const data = fs.readFileSync(resolved);
     return data.toString('base64');
   } catch (e) {
     return null;
@@ -695,7 +717,9 @@ ipcMain.handle('read-file-buffer', (e, filePath) => {
 
 ipcMain.handle('get-file-stat', (e, filePath) => {
   try {
-    const stat = fs.statSync(filePath);
+    const resolved = resolveFilePath(filePath);
+    if (!resolved) return null;
+    const stat = fs.statSync(resolved);
     return { size: stat.size, modified: stat.mtime, birthtime: stat.birthtime, isFile: stat.isFile() };
   } catch (e) {
     return null;
@@ -757,25 +781,12 @@ ipcMain.handle('create-folder', (e, dirPath, name) => {
 ipcMain.handle('delete-path', async (e, targetPath) => {
   try {
     const name = targetPath.split(/[/\\]/).pop();
+    const escaped = targetPath.replace(/'/g, "''").replace(/"/g, '""');
     const stat = fs.statSync(targetPath);
-    
-    // 备份到临时目录用于撤销
-    ensureUndoDir();
-    const backupId = Date.now() + '_' + name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const backupPath = path.join(UNDO_BACKUP_DIR, backupId);
-    if (stat.isDirectory()) {
-      copyDirRecursiveSync(targetPath, backupPath);
-    } else {
-      fs.copyFileSync(targetPath, backupPath);
-    }
-    
-    // 移到回收站
-    const escaped = targetPath.replace(/'/g, "''");
     const method = stat.isDirectory() ? 'DeleteDirectory' : 'DeleteFile';
     const cmd = `powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::${method}('${escaped}', 'OnlyErrorDialogs', 'SendToRecycleBin')"`;
     execSync(cmd, { encoding: 'utf-8', timeout: 10000, windowsHide: true });
-    
-    pushUndo({ type: 'delete', name, originalPath: targetPath, backupPath });
+    pushUndo({ type: 'delete', name, originalPath: targetPath });
     writeLog('删除(回收站)', name);
     return true;
   } catch (e) {
@@ -1103,7 +1114,9 @@ ipcMain.handle('save-file-note', (e, filePath, note) => {
 
 ipcMain.handle('write-file', (e, filePath, content) => {
   try {
-    fs.writeFileSync(filePath, content, 'utf-8');
+    const resolved = resolveFilePath(filePath);
+    if (!resolved) return false;
+    fs.writeFileSync(resolved, content, 'utf-8');
     return true;
   } catch (e) {
     return false;
@@ -1335,10 +1348,14 @@ function sendJson(res, status, data) {
 }
 
 function resolveFilePath(filePath) {
-  if (!workspaceDir) return null;
-  const resolved = path.resolve(workspaceDir, filePath);
-  if (!resolved.startsWith(workspaceDir)) return null;
-  return resolved;
+  if (!filePath) return null;
+  const resolved = path.resolve(filePath);
+  // 检查是否在任何工作目录内
+  const allDirs = [workspaceDir, ...workspaces.map(w => w.path)].filter(Boolean);
+  for (const dir of allDirs) {
+    if (resolved.startsWith(dir)) return resolved;
+  }
+  return null;
 }
 
 function walkDir(dir, depth, maxDepth) {

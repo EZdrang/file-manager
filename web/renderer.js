@@ -3,13 +3,10 @@ const api = window.electronAPI;
 let workspaceDir = null;
 let currentDir = null;
 let currentFile = null;
-let fileList = [];
 let expandedDirs = new Set();
 let searchTimeout = null;
 let linkedFolders = [];
 let workspaces = []; // 所有工作目录
-let dirHistory = [];
-let historyIndex = -1;
 let autoCollapse = true;
 let clipboard = null; // { action: 'copy'|'cut', entry: {...} }
 let multiWindow = false;
@@ -932,7 +929,8 @@ async function loadDir(dirPath, panelIdx) {
         return a.name.localeCompare(b.name);
       });
     }
-  } else {
+  } else if (p.sortBy !== 'name' || p.sortDir !== 'asc') {
+    // 默认按名称升序已在 read-dir 中排序，跳过重复排序
     entries.sort((a, b) => {
       if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
       let va, vb;
@@ -1229,9 +1227,9 @@ async function loadTagsForEntries(entries, tbody, panelIdx) {
         
         paths.splice(fromIdx, 1);
         paths.splice(toIdx, 0, srcPath);
-        saveCustomOrder(dirPath, paths);
+        saveCustomOrder(p.currentDir, paths);
         
-        loadDir(dirPath, idx);
+        loadDir(p.currentDir, idx);
       });
     }
   }
@@ -1554,7 +1552,8 @@ function switchPanelMode(mode) {
         selectedFiles: new Set(),
         lastClickedIndex: -1,
         sortBy: 'name',
-        sortDir: 'asc'
+        sortDir: 'asc',
+        viewMode: 'list'
       };
     }
 
@@ -2319,24 +2318,6 @@ function renderRecentFiles() {
     list.appendChild(item);
   }
 }
-
-// 折叠/展开
-document.addEventListener('DOMContentLoaded', () => {
-  const header = document.getElementById('recentFilesHeader');
-  if (header) {
-    header.addEventListener('click', () => {
-      const list = document.getElementById('recentFilesList');
-      const arrow = header.querySelector('.recent-files-arrow');
-      if (list.style.display === 'none') {
-        list.style.display = 'block';
-        arrow.textContent = '▼';
-      } else {
-        list.style.display = 'none';
-        arrow.textContent = '▶';
-      }
-    });
-  }
-});
 
 // === 收藏夹 ===
 function getFavorites() {
@@ -3233,11 +3214,6 @@ async function showDiff(fileA, fileB) {
 }
 
 function computeDiff(linesA, linesB) {
-  // Myers 简化版 diff
-  const result = [];
-  const maxLen = Math.max(linesA.length, linesB.length);
-  const lcs = [];
-  
   // LCS 动态规划
   const dp = Array(linesA.length + 1).fill(null).map(() => Array(linesB.length + 1).fill(0));
   for (let i = 1; i <= linesA.length; i++) {
@@ -3697,11 +3673,12 @@ async function searchFiles(keyword) {
   const results = await api.searchFiles(keyword);
   document.getElementById('statusText').textContent = `搜索: ${results.length} 个结果`;
 
-  const tbody = document.getElementById('fileTableBody');
+  const tbody = document.getElementById('fileTableBody' + activePanelIndex);
+  if (!tbody) return;
   tbody.innerHTML = '';
 
   if (results.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:40px;">未找到匹配的文件</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px;">未找到匹配的文件</td></tr>';
     return;
   }
 
@@ -3953,37 +3930,6 @@ function collapseAllChildren(container) {
       }
     }
   });
-}
-
-async function ensureExpanded(node, dirPath, depth) {
-  const arrow = node.querySelector('.tree-arrow');
-  const childrenEl = node.nextElementSibling;
-  if (!childrenEl || !childrenEl.classList.contains('tree-children')) return;
-  
-  if (childrenEl.style.display === 'none') {
-    if (childrenEl.children.length === 0) {
-      await loadChildren(childrenEl, dirPath, depth, false);
-    }
-    childrenEl.style.display = 'block';
-    if (arrow) arrow.classList.add('expanded');
-  }
-  
-  // 自动收缩同级其他节点（根节点级别不收缩）
-  if (autoCollapse && depth > 0) {
-    const parent = childrenEl.parentElement;
-    if (parent) {
-      parent.querySelectorAll(':scope > .tree-children').forEach(sc => {
-        if (sc !== childrenEl) {
-          sc.style.display = 'none';
-          const sibItem = sc.previousElementSibling;
-          if (sibItem) {
-            const sibArrow = sibItem.querySelector('.tree-arrow');
-            if (sibArrow) sibArrow.classList.remove('expanded');
-          }
-        }
-      });
-    }
-  }
 }
 
 function highlightTreeNode(dirPath) {

@@ -664,34 +664,6 @@ body {
 }
 
 .panel .batch-bar {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-}
-
-.panel:last-child {
-  border-right: none;
-}
-
-.panel-toolbar {
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-secondary);
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.panel .file-table-container {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.panel .batch-bar {
   flex-shrink: 0;
   position: relative;
   z-index: 5;
@@ -713,10 +685,6 @@ body {
   border-radius: 8px;
   padding: 0 10px;
   height: 32px;
-}
-
-.search-box:focus-within {
-  border-color: var(--accent);
 }
 
 .search-scope-toggle {
