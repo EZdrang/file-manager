@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' file:; font-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' file: blob:; font-src 'self'; frame-src 'self' file: blob:">
   <link rel="icon" type="image/png" href="icon-48.png">
   <title>资料管理系统2.0</title>
   <link rel="stylesheet" href="styles.css">
@@ -18,11 +18,12 @@
   </div>
 
   <div class="menubar">
-    <div class="menu-item">
-      <span>文件</span>
-      <div class="menu-dropdown">
-        <button class="menu-dropdown-item" id="menuSetWorkspace">📂 设置工作目录</button>
-        <button class="menu-dropdown-item" id="menuOpenFolder">📁 在资源管理器中打开</button>
+      <div class="menu-item">
+        <span>文件</span>
+        <div class="menu-dropdown">
+          <button class="menu-dropdown-item" id="menuSetWorkspace">📂 设置工作目录</button>
+          <button class="menu-dropdown-item" id="menuAddRemote">🌐 挂载远程目录</button>
+          <button class="menu-dropdown-item" id="menuOpenFolder">📁 在资源管理器中打开</button>
         <div class="menu-separator"></div>
         <button class="menu-dropdown-item" id="menuNewFolder">新建文件夹 <span class="shortcut">Ctrl+N</span></button>
       </div>
@@ -44,6 +45,27 @@
         <button class="menu-dropdown-item" id="menuSortName">按名称排序</button>
         <button class="menu-dropdown-item" id="menuSortSize">按大小排序</button>
         <button class="menu-dropdown-item" id="menuSortDate">按日期排序</button>
+        <button class="menu-dropdown-item" id="menuSortCustom">自定义排序</button>
+      </div>
+    </div>
+      <div class="menu-item">
+        <span>工具</span>
+        <div class="menu-dropdown">
+          <button class="menu-dropdown-item" id="menuFindDuplicates">🔍 重复文件检测</button>
+          <button class="menu-dropdown-item" id="menuAutoTagExif">📷 EXIF 自动打标签</button>
+        </div>
+      </div>
+    <div class="menu-item">
+      <span>笔记</span>
+      <div class="menu-dropdown">
+        <button class="menu-dropdown-item" id="menuNoteList">📝 笔记列表</button>
+        <button class="menu-dropdown-item" id="menuExportNotes">📦 导出全部笔记</button>
+      </div>
+    </div>
+    <div class="menu-item">
+      <span>统计</span>
+      <div class="menu-dropdown">
+        <button class="menu-dropdown-item" id="menuStats">📊 文件统计</button>
       </div>
     </div>
     <div class="menu-item">
@@ -65,6 +87,20 @@
       </div>
 
       <div class="sidebar-tree-container" id="sidebarTreeContainer">
+        <div class="recent-files-section" id="recentFilesSection" style="display:none;">
+          <div class="recent-files-header" id="recentFilesHeader">
+            <span>🕐 最近文件</span>
+            <span class="recent-files-arrow">▶</span>
+          </div>
+          <div class="recent-files-list" id="recentFilesList" style="display:none;"></div>
+        </div>
+        <div class="recent-files-section" id="favoritesSection" style="display:none;">
+          <div class="recent-files-header" id="favoritesHeader">
+            <span>⭐ 收藏夹</span>
+            <span class="recent-files-arrow">▶</span>
+          </div>
+          <div class="recent-files-list" id="favoritesList" style="display:none;"></div>
+        </div>
         <div id="fileTree" class="file-tree"></div>
         <div id="emptyHint" class="empty-hint" style="display:none;">
           <p>未设置工作目录</p>
@@ -84,10 +120,19 @@
     <div class="main-content">
       <div class="toolbar">
         <button class="back-btn" id="backBtn" title="返回上一层 (Backspace)">⬆️</button>
+        <div class="panel-mode-switcher" id="panelModeSwitcher">
+          <button class="panel-mode-btn active" data-mode="1" title="单栏">1</button>
+          <button class="panel-mode-btn" data-mode="2" title="双栏">2</button>
+          <button class="panel-mode-btn" data-mode="3" title="三栏">3</button>
+        </div>
         <div class="search-box" id="searchBox">
           <span class="search-icon">🔍</span>
           <input type="text" id="searchInput" placeholder="搜索文件...">
           <span class="search-clear" id="searchClear" title="右键清空">✕</span>
+          <div class="search-scope-toggle" id="searchScopeToggle">
+            <button class="scope-btn active" data-scope="local" title="当前目录">📁</button>
+            <button class="scope-btn" data-scope="global" title="全部工作目录">🌐</button>
+          </div>
           <div class="search-tooltip" id="searchTooltip">
             <div class="search-tooltip-title">高级搜索语法</div>
             <div class="search-tooltip-item"><code>#标签</code> 按标签筛选 <span class="search-tooltip-example">#重要 ＃重要</span></div>
@@ -102,7 +147,6 @@
             <div class="search-tooltip-item" style="color:var(--text-muted);">Windows路径自动跳转目录</div>
           </div>
         </div>
-        <div class="breadcrumb" id="breadcrumb"></div>
       </div>
 
       <div class="tab-bar" id="tabBar">
@@ -110,18 +154,65 @@
         <button class="tab-add-btn" id="tabAddBtn" title="新标签页">+</button>
       </div>
 
-      <div class="file-table-container">
-        <table class="file-table">
-          <thead>
-            <tr>
-              <th>名称</th>
-              <th>标签</th>
-              <th>大小</th>
-              <th>修改时间</th>
-            </tr>
-          </thead>
-          <tbody id="fileTableBody"></tbody>
-        </table>
+      <div class="panels-container" id="panelsContainer">
+        <div class="panel" data-panel="0">
+          <div class="panel-toolbar">
+            <div class="breadcrumb" id="breadcrumb0"></div>
+          </div>
+          <div class="filter-bar" id="filterBar0">
+            <button class="filter-view-btn active" data-view="list" id="viewList0" title="列表视图">☰</button>
+            <button class="filter-view-btn" data-view="category" id="viewCategory0" title="分类视图">▦</button>
+            <button class="filter-view-btn" data-view="kanban" id="viewKanban0" title="看板视图">◫</button>
+            <select class="filter-select" id="filterType0">
+              <option value="">全部类型</option>
+              <option value="image">图片</option>
+              <option value="video">视频</option>
+              <option value="audio">音频</option>
+              <option value="document">文档</option>
+              <option value="code">代码</option>
+              <option value="archive">压缩包</option>
+            </select>
+            <select class="filter-select" id="filterSize0">
+              <option value="">全部大小</option>
+              <option value="0-100k">小于 100KB</option>
+              <option value="100k-1m">100KB - 1MB</option>
+              <option value="1m-10m">1MB - 10MB</option>
+              <option value="10m-100m">10MB - 100MB</option>
+              <option value="100m+">大于 100MB</option>
+            </select>
+            <select class="filter-select" id="filterDate0">
+              <option value="">全部时间</option>
+              <option value="today">今天</option>
+              <option value="week">最近一周</option>
+              <option value="month">最近一月</option>
+              <option value="year">最近一年</option>
+            </select>
+            <button class="filter-clear-btn" id="filterClear0" style="display:none;" title="清除筛选">✕</button>
+          </div>
+          <div class="file-table-container">
+            <table class="file-table">
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>标签</th>
+                  <th>大小</th>
+                  <th>修改时间</th>
+                </tr>
+              </thead>
+              <tbody class="file-table-body" id="fileTableBody0"></tbody>
+            </table>
+          </div>
+          <div class="batch-bar" data-panel="0" style="display:none">
+            <span class="batch-count">已选 0 项</span>
+            <button class="batch-btn" onclick="batchTag(0)">🏷️ 打标签</button>
+            <button class="batch-btn" onclick="batchRemoveTag(0)">🏷️ 删标签</button>
+            <button class="batch-btn" onclick="batchRemoveNotes(0)">📝 删备注</button>
+            <button class="batch-btn" onclick="batchRename(0)">✏️ 重命名</button>
+            <button class="batch-btn" onclick="batchMove(0)">📁 移动</button>
+            <button class="batch-btn batch-btn-danger" onclick="batchDelete(0)">🗑️ 删除</button>
+            <button class="batch-btn batch-btn-cancel" onclick="clearSelection(0)">✕ 取消</button>
+          </div>
+        </div>
       </div>
 
       <div class="status-bar">
@@ -130,32 +221,35 @@
     </div>
 
     <div class="detail-panel" id="detailPanel" style="display:none">
+      <div class="panel-resize-handle" id="panelResizeHandle"></div>
       <div class="panel-header">
         <h3 id="detailTitle">详情</h3>
         <button class="close-panel-btn" id="closePanel">×</button>
       </div>
 
-      <div class="preview-area" id="previewArea">
-        <span class="preview-placeholder">选择文件查看预览</span>
-      </div>
-
-      <div class="info-section">
-        <h4>文件信息</h4>
-        <div class="info-content" id="fileInfo"></div>
-      </div>
-
-      <div class="edit-section">
-        <h4>标签与备注</h4>
-        <div class="form-group">
-          <label>标签</label>
-          <input type="text" id="tagsInput" placeholder="多个标签用逗号分隔">
+      <div class="detail-panel-scroll">
+        <div class="preview-area" id="previewArea">
+          <span class="preview-placeholder">选择文件查看预览</span>
         </div>
-        <div class="form-group">
-          <label>备注</label>
-          <textarea id="notesInput" rows="3" placeholder="添加备注..."></textarea>
+
+        <div class="info-section">
+          <h4>文件信息</h4>
+          <div class="info-content" id="fileInfo"></div>
         </div>
-        <div class="btn-group">
-          <button class="save-btn" id="saveBtn">保存</button>
+
+        <div class="edit-section">
+          <h4>标签与备注</h4>
+          <div class="form-group">
+            <label>标签</label>
+            <input type="text" id="tagsInput" placeholder="多个标签用逗号分隔">
+          </div>
+          <div class="form-group">
+            <label>备注</label>
+            <textarea id="notesInput" rows="3" placeholder="添加备注..."></textarea>
+          </div>
+          <div class="btn-group">
+            <button class="save-btn" id="saveBtn">保存</button>
+          </div>
         </div>
       </div>
     </div>
@@ -251,6 +345,13 @@
     </div>
   </div>
 
+  <div class="fullscreen-overlay" id="fullscreenOverlay" style="display:none;">
+    <div class="fullscreen-close" id="fullscreenClose">✕</div>
+    <div class="fullscreen-content" id="fullscreenContent"></div>
+  </div>
+
+  <script src="vendor/marked.umd.js"></script>
+  <script src="vendor/mammoth.browser.min.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

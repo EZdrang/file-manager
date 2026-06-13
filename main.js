@@ -18,6 +18,225 @@ let tray = null;
 let workspaceDir = null; // 主工作目录（保持兼容）
 let workspaces = []; // 所有工作目录 [{id, name, path, isPrimary}]
 
+// === 撤销系统 ===
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO = 20;
+const UNDO_BACKUP_DIR = path.join(os.tmpdir(), 'file-manager-undo');
+let undoCount = 0;
+
+function pushUndo(action) {
+  undoStack.push(action);
+  redoStack.length = 0; // 新操作清空重做栈
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  undoCount++;
+  if (undoCount >= 3) {
+    undoCount = 0;
+    try { fs.rmSync(UNDO_BACKUP_DIR, { recursive: true, force: true }); } catch (e) {}
+  }
+}
+
+function ensureUndoDir() {
+  if (!fs.existsSync(UNDO_BACKUP_DIR)) fs.mkdirSync(UNDO_BACKUP_DIR, { recursive: true });
+}
+
+function copyDirRecursiveSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursiveSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+function moveDirRecursiveSync(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      moveDirRecursiveSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+  fs.rmSync(src, { recursive: true, force: true });
+}
+
+async function performUndo() {
+  if (undoStack.length === 0) return { success: false, message: '没有可撤销的操作' };
+  const action = undoStack.pop();
+
+  try {
+    switch (action.type) {
+      case 'delete': {
+        const backupPath = action.backupPath;
+        const originalPath = action.originalPath;
+        if (!fs.existsSync(backupPath)) return { success: false, message: '备份已过期，无法恢复' };
+        const stat = fs.statSync(backupPath);
+        if (stat.isDirectory()) {
+          copyDirRecursiveSync(backupPath, originalPath);
+        } else {
+          fs.copyFileSync(backupPath, originalPath);
+        }
+        fs.rmSync(backupPath, { recursive: true, force: true });
+        // 推入重做栈
+        ensureUndoDir();
+        const backupId = Date.now() + '_' + action.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const newBackup = path.join(UNDO_BACKUP_DIR, backupId);
+        const origStat = fs.statSync(originalPath);
+        if (origStat.isDirectory()) {
+          copyDirRecursiveSync(originalPath, newBackup);
+        } else {
+          fs.copyFileSync(originalPath, newBackup);
+        }
+        redoStack.push({ ...action, backupPath: newBackup });
+        writeLog('撤销删除', action.name);
+        return { success: true, message: `已恢复: ${action.name}` };
+      }
+      case 'move': {
+        fs.renameSync(action.destPath, action.sourcePath);
+        redoStack.push({ ...action });
+        writeLog('撤销移动', action.sourcePath.split(/[/\\]/).pop());
+        return { success: true, message: `已恢复: ${action.sourcePath.split(/[/\\]/).pop()}` };
+      }
+      case 'rename': {
+        fs.renameSync(action.newPath, action.oldPath);
+        redoStack.push({ ...action });
+        writeLog('撤销重命名', action.oldPath.split(/[/\\]/).pop());
+        return { success: true, message: `已恢复: ${action.oldPath.split(/[/\\]/).pop()}` };
+      }
+      default:
+        return { success: false, message: '未知操作类型' };
+    }
+  } catch (e) {
+    return { success: false, message: `撤销失败: ${e.message}` };
+  }
+}
+
+async function performRedo() {
+  if (redoStack.length === 0) return { success: false, message: '没有可重做的操作' };
+  const action = redoStack.pop();
+
+  try {
+    switch (action.type) {
+      case 'delete': {
+        const name = action.name;
+        const escaped = action.originalPath.replace(/'/g, "''");
+        const stat = fs.statSync(action.originalPath);
+        const method = stat.isDirectory() ? 'DeleteDirectory' : 'DeleteFile';
+        // 先备份再删除
+        ensureUndoDir();
+        const backupId = Date.now() + '_' + name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const newBackup = path.join(UNDO_BACKUP_DIR, backupId);
+        if (stat.isDirectory()) {
+          copyDirRecursiveSync(action.originalPath, newBackup);
+        } else {
+          fs.copyFileSync(action.originalPath, newBackup);
+        }
+        const cmd = `powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::${method}('${escaped}', 'OnlyErrorDialogs', 'SendToRecycleBin')"`;
+        execSync(cmd, { encoding: 'utf-8', timeout: 10000, windowsHide: true });
+        undoStack.push({ ...action, backupPath: newBackup });
+        writeLog('重做删除', name);
+        return { success: true, message: `已重做删除: ${name}` };
+      }
+      case 'move': {
+        fs.renameSync(action.sourcePath, action.destPath);
+        undoStack.push({ ...action });
+        writeLog('重做移动', action.destPath.split(/[/\\]/).pop());
+        return { success: true, message: `已重做移动: ${action.destPath.split(/[/\\]/).pop()}` };
+      }
+      case 'rename': {
+        fs.renameSync(action.oldPath, action.newPath);
+        undoStack.push({ ...action });
+        writeLog('重做重命名', action.newPath.split(/[/\\]/).pop());
+        return { success: true, message: `已重做重命名: ${action.newPath.split(/[/\\]/).pop()}` };
+      }
+      default:
+        return { success: false, message: '未知操作类型' };
+    }
+  } catch (e) {
+    return { success: false, message: `重做失败: ${e.message}` };
+  }
+}
+
+// === 文件监听系统 ===
+const fileWatchers = new Map(); // dirPath -> watcher
+const filePollers = new Map(); // dirPath -> { timer, lastMtime }
+let watchDebounceTimer = null;
+let watchIgnoreSelf = false;
+
+function notifyChange(dirPath, eventType, filename) {
+  if (watchIgnoreSelf) return;
+  if (watchDebounceTimer) clearTimeout(watchDebounceTimer);
+  watchDebounceTimer = setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('file-changed', { dir: dirPath, event: eventType, file: filename || '' });
+    }
+  }, 500);
+}
+
+function startWatching(dirPath) {
+  if (!dirPath || !fs.existsSync(dirPath)) return;
+  if (fileWatchers.has(dirPath)) return;
+  
+  // fs.watch
+  try {
+    const watcher = fs.watch(dirPath, { persistent: false }, (eventType, filename) => {
+      notifyChange(dirPath, eventType, filename);
+    });
+    fileWatchers.set(dirPath, watcher);
+  } catch (e) {}
+
+  // 轮询兜底：每2秒检查目录修改时间
+  try {
+    let lastMtime = fs.statSync(dirPath).mtimeMs;
+    const timer = setInterval(() => {
+      if (watchIgnoreSelf) return;
+      try {
+        const currentMtime = fs.statSync(dirPath).mtimeMs;
+        if (currentMtime !== lastMtime) {
+          lastMtime = currentMtime;
+          notifyChange(dirPath, 'poll', '');
+        }
+      } catch (e) {}
+    }, 2000);
+    filePollers.set(dirPath, { timer, lastMtime });
+  } catch (e) {}
+}
+
+function stopWatching(dirPath) {
+  if (dirPath) {
+    const watcher = fileWatchers.get(dirPath);
+    if (watcher) { watcher.close(); fileWatchers.delete(dirPath); }
+    const poller = filePollers.get(dirPath);
+    if (poller) { clearInterval(poller.timer); filePollers.delete(dirPath); }
+  } else {
+    for (const [, watcher] of fileWatchers) watcher.close();
+    fileWatchers.clear();
+    for (const [, poller] of filePollers) clearInterval(poller.timer);
+    filePollers.clear();
+    if (watchDebounceTimer) { clearTimeout(watchDebounceTimer); watchDebounceTimer = null; }
+  }
+}
+
+function ignoreSelfOperations(callback) {
+  watchIgnoreSelf = true;
+  try {
+    const result = callback();
+    // 短暂忽略，让fs.watch回调跳过自身操作触发的事件
+    setTimeout(() => { watchIgnoreSelf = false; }, 300);
+    return result;
+  } catch (e) {
+    watchIgnoreSelf = false;
+    throw e;
+  }
+}
+
 // === 日志系统 ===
 function getLogPath() {
   if (!workspaceDir) return null;
@@ -211,7 +430,10 @@ app.whenReady().then(() => {
   });
 });
 
-app.on('before-quit', () => { app.isQuitting = true; });
+app.on('before-quit', () => {
+  stopWatching();
+  app.isQuitting = true;
+});
 
 app.on('window-all-closed', () => {
   // 不退出，保持在托盘运行
@@ -272,7 +494,16 @@ ipcMain.handle('set-workspace', async () => {
   });
   if (result.canceled || !result.filePaths[0]) return null;
   workspaceDir = result.filePaths[0];
-  saveConfig({ workspace: workspaceDir });
+  const existing = workspaces.find(w => w.path === workspaceDir);
+  if (existing) {
+    workspaces = workspaces.map(w => ({ ...w, isPrimary: w.id === existing.id }));
+  } else {
+    workspaces = [
+      { id: Date.now(), name: workspaceDir.split(/[/\\]/).pop(), path: workspaceDir, isPrimary: true },
+      ...workspaces.map(w => ({ ...w, isPrimary: false }))
+    ];
+  }
+  saveWorkspaces(workspaces);
   return workspaceDir;
 });
 
@@ -293,6 +524,24 @@ ipcMain.handle('add-workspace', async () => {
   return entry;
 });
 
+ipcMain.handle('add-workspace-path', (e, folderPath) => {
+  if (workspaces.some(w => w.path === folderPath)) return null;
+  const name = folderPath.split(/[/\\]/).pop();
+  const entry = { id: Date.now(), name, path: folderPath, isPrimary: workspaces.length === 0 };
+  workspaces.push(entry);
+  saveWorkspaces(workspaces);
+  return entry;
+});
+
+ipcMain.handle('select-directory', async (e, title) => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: title || '选择文件夹'
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  return result.filePaths[0];
+});
+
 ipcMain.handle('remove-workspace', (e, id) => {
   const ws = workspaces.find(w => w.id === id);
   if (ws && ws.isPrimary) return false; // 不能删除主目录
@@ -307,8 +556,94 @@ ipcMain.handle('set-primary-workspace', (e, id) => {
   return true;
 });
 
+ipcMain.handle('save-workspace-order', (e, newOrder) => {
+  workspaces = newOrder;
+  saveWorkspaces(workspaces);
+  return true;
+});
+
 ipcMain.handle('open-workspace-path', (e, p) => {
   shell.openPath(p);
+});
+
+ipcMain.handle('open-terminal', (e, dirPath) => {
+  try {
+    execSync(`start powershell -NoExit -Command "cd '${dirPath.replace(/'/g, "''")}'"`, { windowsHide: false });
+  } catch (e) {}
+});
+
+// === 远程目录挂载 ===
+ipcMain.handle('mount-remote', (e, { type, host, share, user, password, driveLetter }) => {
+  try {
+    let uncPath;
+    if (type === 'smb') {
+      uncPath = `\\\\${host}\\${share}`;
+    } else if (type === 'webdav') {
+      uncPath = host.startsWith('http') ? host : `http://${host}`;
+    } else {
+      return { success: false, error: '不支持的类型' };
+    }
+
+    const letter = driveLetter || 'Z';
+    let cmd;
+    if (type === 'smb' && user) {
+      cmd = `net use ${letter}: "${uncPath}" /user:${user} "${password || ''}" /persistent:no`;
+    } else if (type === 'smb') {
+      cmd = `net use ${letter}: "${uncPath}" /persistent:no`;
+    } else {
+      cmd = `net use ${letter}: "${uncPath}" /persistent:no`;
+    }
+
+    execSync(cmd, { encoding: 'utf-8', timeout: 15000, windowsHide: true });
+    const mountPath = `${letter}:\\`;
+    return { success: true, path: mountPath };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('unmount-remote', (e, driveLetter) => {
+  try {
+    execSync(`net use ${driveLetter}: /delete /y`, { encoding: 'utf-8', timeout: 10000, windowsHide: true });
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('list-mounts', () => {
+  try {
+    const output = execSync('net use', { encoding: 'utf-8', timeout: 5000, windowsHide: true });
+    const mounts = [];
+    const regex = /([A-Z]):\s+\\\\(\S+)/g;
+    let match;
+    while ((match = regex.exec(output)) !== null) {
+      mounts.push({ letter: match[1], path: match[2] });
+    }
+    return mounts;
+  } catch (e) {
+    return [];
+  }
+});
+
+ipcMain.handle('open-external', (e, url) => {
+  shell.openExternal(url);
+});
+
+ipcMain.handle('undo', () => {
+  return performUndo();
+});
+
+ipcMain.handle('redo', () => {
+  return performRedo();
+});
+
+ipcMain.handle('watch-dir', (e, dirPath) => {
+  startWatching(dirPath);
+});
+
+ipcMain.handle('unwatch-dir', () => {
+  stopWatching();
 });
 
 // === 文件系统 ===
@@ -319,7 +654,6 @@ ipcMain.handle('read-dir', (e, dirPath) => {
   try {
     const entries = fs.readdirSync(target, { withFileTypes: true });
     return entries
-      .filter(e => !e.name.startsWith('.'))
       .map(e => {
         const fullPath = path.join(target, e.name);
         let stat = {};
@@ -345,6 +679,15 @@ ipcMain.handle('read-dir', (e, dirPath) => {
 ipcMain.handle('read-file-text', (e, filePath) => {
   try {
     return fs.readFileSync(filePath, 'utf-8').slice(0, 20000);
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('read-file-buffer', (e, filePath) => {
+  try {
+    const data = fs.readFileSync(filePath);
+    return data.toString('base64');
   } catch (e) {
     return null;
   }
@@ -403,7 +746,7 @@ ipcMain.handle('search-files', (e, keyword) => {
 ipcMain.handle('create-folder', (e, dirPath, name) => {
   try {
     const target = path.join(dirPath, name);
-    fs.mkdirSync(target, { recursive: true });
+    ignoreSelfOperations(() => fs.mkdirSync(target, { recursive: true }));
     writeLog('创建文件夹', target);
     return true;
   } catch (e) {
@@ -411,16 +754,29 @@ ipcMain.handle('create-folder', (e, dirPath, name) => {
   }
 });
 
-ipcMain.handle('delete-path', (e, targetPath) => {
+ipcMain.handle('delete-path', async (e, targetPath) => {
   try {
     const name = targetPath.split(/[/\\]/).pop();
     const stat = fs.statSync(targetPath);
+    
+    // 备份到临时目录用于撤销
+    ensureUndoDir();
+    const backupId = Date.now() + '_' + name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const backupPath = path.join(UNDO_BACKUP_DIR, backupId);
     if (stat.isDirectory()) {
-      fs.rmSync(targetPath, { recursive: true, force: true });
+      copyDirRecursiveSync(targetPath, backupPath);
     } else {
-      fs.unlinkSync(targetPath);
+      fs.copyFileSync(targetPath, backupPath);
     }
-    writeLog('删除', name);
+    
+    // 移到回收站
+    const escaped = targetPath.replace(/'/g, "''");
+    const method = stat.isDirectory() ? 'DeleteDirectory' : 'DeleteFile';
+    const cmd = `powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::${method}('${escaped}', 'OnlyErrorDialogs', 'SendToRecycleBin')"`;
+    execSync(cmd, { encoding: 'utf-8', timeout: 10000, windowsHide: true });
+    
+    pushUndo({ type: 'delete', name, originalPath: targetPath, backupPath });
+    writeLog('删除(回收站)', name);
     return true;
   } catch (e) {
     return false;
@@ -431,7 +787,8 @@ ipcMain.handle('rename-path', (e, oldPath, newName) => {
   try {
     const dir = path.dirname(oldPath);
     const newPath = path.join(dir, newName);
-    fs.renameSync(oldPath, newPath);
+    ignoreSelfOperations(() => fs.renameSync(oldPath, newPath));
+    pushUndo({ type: 'rename', oldPath, newPath });
     writeLog('重命名', `${oldPath.split(/[/\\]/).pop()} → ${newName}`);
     return newPath;
   } catch (e) {
@@ -442,7 +799,7 @@ ipcMain.handle('rename-path', (e, oldPath, newName) => {
 ipcMain.handle('backup-file', (e, sourcePath, backupPath) => {
   try {
     const data = fs.readFileSync(sourcePath);
-    fs.writeFileSync(backupPath, data);
+    ignoreSelfOperations(() => fs.writeFileSync(backupPath, data));
     writeLog('备份文件', `${sourcePath.split(/[/\\]/).pop()} → ${backupPath.split(/[/\\]/).pop()}`);
     return true;
   } catch (e) {
@@ -452,7 +809,13 @@ ipcMain.handle('backup-file', (e, sourcePath, backupPath) => {
 
 ipcMain.handle('copy-file', (e, sourcePath, destPath) => {
   try {
-    fs.copyFileSync(sourcePath, destPath);
+    ignoreSelfOperations(() => fs.copyFileSync(sourcePath, destPath));
+    // 继承标签和备注
+    const meta = loadMeta();
+    if (meta[sourcePath]) {
+      meta[destPath] = { ...meta[sourcePath] };
+      saveMeta(meta);
+    }
     writeLog('复制文件', `${sourcePath.split(/[/\\]/).pop()} → ${destPath.split(/[/\\]/).pop()}`);
     return true;
   } catch (e) {
@@ -462,7 +825,15 @@ ipcMain.handle('copy-file', (e, sourcePath, destPath) => {
 
 ipcMain.handle('move-file', (e, sourcePath, destPath) => {
   try {
-    fs.renameSync(sourcePath, destPath);
+    ignoreSelfOperations(() => fs.renameSync(sourcePath, destPath));
+    // 迁移标签和备注
+    const meta = loadMeta();
+    if (meta[sourcePath]) {
+      meta[destPath] = meta[sourcePath];
+      delete meta[sourcePath];
+      saveMeta(meta);
+    }
+    pushUndo({ type: 'move', sourcePath, destPath });
     writeLog('移动文件', `${sourcePath.split(/[/\\]/).pop()} → ${destPath.split(/[/\\]/).pop()}`);
     return true;
   } catch (e) {
@@ -709,7 +1080,183 @@ ipcMain.handle('save-meta', (e, filePath, data) => {
   return true;
 });
 
-// === 统计信息 ===
+// === 笔记系统 ===
+ipcMain.handle('get-all-notes', () => {
+  const meta = loadMeta();
+  const notes = [];
+  for (const [filePath, data] of Object.entries(meta)) {
+    if (data.fileNote) {
+      notes.push({ filePath, fileName: filePath.split(/[/\\]/).pop(), note: data.fileNote, modified: data.noteModified || null });
+    }
+  }
+  return notes.sort((a, b) => (b.modified || 0) - (a.modified || 0));
+});
+
+ipcMain.handle('save-file-note', (e, filePath, note) => {
+  const meta = loadMeta();
+  if (!meta[filePath]) meta[filePath] = { tags: '', notes: '' };
+  meta[filePath].fileNote = note;
+  meta[filePath].noteModified = Date.now();
+  saveMeta(meta);
+  return true;
+});
+
+ipcMain.handle('write-file', (e, filePath, content) => {
+  try {
+    fs.writeFileSync(filePath, content, 'utf-8');
+    return true;
+  } catch (e) {
+    return false;
+  }
+});
+
+ipcMain.handle('read-exif', async (e, filePath) => {
+  try {
+    const exifr = require('exifr');
+    const data = await exifr.parse(filePath, true);
+    if (!data) return null;
+    
+    const result = {};
+    if (data.Make) result.设备 = `${data.Make} ${data.Model || ''}`.trim();
+    if (data.LensModel || data.LensMake) result.镜头 = `${data.LensMake || ''} ${data.LensModel || ''}`.trim();
+    if (data.FocalLength) result.焦距 = `${data.FocalLength}mm`;
+    if (data.FNumber) result.光圈 = `f/${data.FNumber}`;
+    if (data.ExposureTime) result.快门 = data.ExposureTime >= 1 ? `${data.ExposureTime}s` : `1/${Math.round(1/data.ExposureTime)}s`;
+    if (data.ISO) result.ISO = data.ISO;
+    if (data.DateTimeOriginal || data.CreateDate) result.拍摄时间 = new Date(data.DateTimeOriginal || data.CreateDate).toLocaleString('zh-CN');
+    if (data.ImageWidth) result.宽度 = `${data.ImageWidth}px`;
+    if (data.ImageHeight) result.高度 = `${data.ImageHeight}px`;
+    if (data.GPSLatitude && data.GPSLongitude) {
+      const lat = data.GPSLatitude;
+      const lng = data.GPSLongitude;
+      result.位置 = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    }
+    if (data.Software) result.软件 = data.Software;
+    
+    return Object.keys(result).length > 0 ? result : null;
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.handle('export-notes', async (e, exportPath) => {
+  try {
+    const meta = loadMeta();
+    const notesDir = exportPath || path.join(os.homedir(), 'Desktop', '文件笔记导出');
+    if (!fs.existsSync(notesDir)) fs.mkdirSync(notesDir, { recursive: true });
+    
+    let indexMd = '# 文件笔记索引\n\n';
+    let count = 0;
+    
+    for (const [filePath, data] of Object.entries(meta)) {
+      if (!data.fileNote) continue;
+      const fileName = filePath.split(/[/\\]/).pop();
+      const noteName = fileName.replace(/[<>:"/\\|?*]/g, '_') + '.md';
+      
+      const mdContent = `# ${fileName}\n\n**源文件路径:** \`${filePath}\`\n**标签:** ${data.tags || '无'}\n**修改时间:** ${data.noteModified ? new Date(data.noteModified).toLocaleString('zh-CN') : '未知'}\n\n---\n\n${data.fileNote}\n`;
+      
+      fs.writeFileSync(path.join(notesDir, noteName), mdContent, 'utf-8');
+      indexMd += `- [${fileName}](${noteName}) - ${data.tags || '无标签'}\n`;
+      count++;
+    }
+    
+    fs.writeFileSync(path.join(notesDir, 'README.md'), indexMd, 'utf-8');
+    return { success: true, count, path: notesDir };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// === 文件内容搜索 ===
+ipcMain.handle('search-file-content', (e, dirPath, keyword) => {
+  if (!dirPath || !keyword || !fs.existsSync(dirPath)) return [];
+  const textExts = new Set(['txt','md','log','csv','json','xml','yaml','yml','toml','ini','cfg','conf','sql','py','js','ts','jsx','tsx','java','c','cpp','h','cs','go','rs','rb','php','html','htm','css','scss','less','vue','svelte','sh','bat','cmd','ps1','swift','kt','dart','lua','r','rtf']);
+  const results = [];
+  const maxResults = 200;
+  const kw = keyword.toLowerCase();
+
+  function walk(dir, depth) {
+    if (depth > 6 || results.length >= maxResults) return;
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (results.length >= maxResults) break;
+        if (entry.name.startsWith('.')) continue;
+        const fp = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(fp, depth + 1);
+        } else {
+          const ext = path.extname(entry.name).toLowerCase().replace('.', '');
+          if (!textExts.has(ext)) continue;
+          try {
+            const content = fs.readFileSync(fp, 'utf-8');
+            const lines = content.split('\n');
+            const matches = [];
+            for (let i = 0; i < lines.length; i++) {
+              if (lines[i].toLowerCase().includes(kw)) {
+                matches.push({ line: i + 1, text: lines[i].trim().slice(0, 200) });
+                if (matches.length >= 3) break;
+              }
+            }
+            if (matches.length > 0) {
+              results.push({ path: fp, name: entry.name, matches });
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  }
+  walk(dirPath, 0);
+  return results;
+});
+ipcMain.handle('read-zip', (e, filePath) => {
+  const ext = path.extname(filePath).toLowerCase();
+  
+  // ZIP 文件用 yauzl
+  if (ext === '.zip') {
+    return new Promise((resolve) => {
+      try {
+        const yauzl = require('yauzl');
+        yauzl.open(filePath, { lazyEntries: true }, (err, zipfile) => {
+          if (err) return resolve(null);
+          const entries = [];
+          zipfile.readEntry();
+          zipfile.on('entry', (entry) => {
+            entries.push({
+              name: entry.fileName,
+              size: entry.uncompressedSize,
+              compressedSize: entry.compressedSize,
+              isDir: entry.fileName.endsWith('/')
+            });
+            zipfile.readEntry();
+          });
+          zipfile.on('end', () => resolve(entries));
+          zipfile.on('error', () => resolve(null));
+        });
+      } catch (e) {
+        resolve(null);
+      }
+    });
+  }
+  
+  // RAR/7Z/TAR/GZ 用 7zip-min
+  return new Promise((resolve) => {
+    try {
+      const _7z = require('7zip-min');
+      _7z.list(filePath, (err, result) => {
+        if (err || !result) return resolve(null);
+        const entries = result.map(e => ({
+          name: e.name,
+          size: e.size || 0,
+          compressedSize: e.compressedSize || 0,
+          isDir: e.name.endsWith('/') || e.isDir
+        }));
+        resolve(entries);
+      });
+    } catch (e) {
+      resolve(null);
+    }
+  });
+});
 ipcMain.handle('get-stats', (e, dirPath) => {
   const target = dirPath || workspaceDir;
   if (!target || !fs.existsSync(target)) return { files: 0, dirs: 0, totalSize: 0 };
@@ -735,6 +1282,27 @@ ipcMain.handle('get-stats', (e, dirPath) => {
 
   walk(target);
   return { files, dirs, totalSize };
+});
+
+ipcMain.handle('get-dir-size', (e, dirPath) => {
+  if (!dirPath || !fs.existsSync(dirPath)) return 0;
+  let totalSize = 0;
+  function walk(dir) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const fp = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(fp);
+        } else {
+          try { totalSize += fs.statSync(fp).size; } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  }
+  walk(dirPath);
+  return totalSize;
 });
 
 // === REST API服务器（供AI Agent调用）===
@@ -1090,3 +1658,76 @@ ipcMain.handle('check-update', async () => {
 });
 
 ipcMain.handle('get-app-version', () => APP_VERSION);
+
+// === 文件类型统计 ===
+ipcMain.handle('get-type-stats', (e, dirPath) => {
+  if (!dirPath || !fs.existsSync(dirPath)) return {};
+  const stats = {};
+  function walk(dir) {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith('.')) continue;
+        const fp = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(fp); }
+        else {
+          const ext = path.extname(entry.name).toLowerCase().replace('.', '') || '无扩展名';
+          if (!stats[ext]) stats[ext] = { count: 0, size: 0 };
+          stats[ext].count++;
+          try { stats[ext].size += fs.statSync(fp).size; } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  }
+  walk(dirPath);
+  return stats;
+});
+
+// === 重复文件检测 ===
+ipcMain.handle('find-duplicates', async (e, dirPath) => {
+  if (!dirPath || !fs.existsSync(dirPath)) return [];
+  const crypto = require('crypto');
+  
+  const filesBySize = new Map();
+  function walk(dir) {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith('.')) continue;
+        const fp = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(fp); }
+        else {
+          try {
+            const stat = fs.statSync(fp);
+            if (stat.size === 0) continue;
+            const key = stat.size;
+            if (!filesBySize.has(key)) filesBySize.set(key, []);
+            filesBySize.get(key).push({ path: fp, name: entry.name, size: stat.size });
+          } catch (e) {}
+        }
+      }
+    } catch (e) {}
+  }
+  walk(dirPath);
+
+  const filesByHash = new Map();
+  for (const [, files] of filesBySize) {
+    if (files.length < 2) continue;
+    for (const file of files) {
+      try {
+        const buf = fs.readFileSync(file.path);
+        const hash = crypto.createHash('md5').update(buf).digest('hex');
+        file.hash = hash;
+        if (!filesByHash.has(hash)) filesByHash.set(hash, []);
+        filesByHash.get(hash).push(file);
+      } catch (e) {}
+    }
+  }
+
+  const duplicates = [];
+  for (const [hash, files] of filesByHash) {
+    if (files.length >= 2) {
+      duplicates.push({ hash, size: files[0].size, files });
+    }
+  }
+  duplicates.sort((a, b) => (b.size * b.files.length) - (a.size * a.files.length));
+  return duplicates;
+});
