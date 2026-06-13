@@ -10,9 +10,7 @@
   },
   "author": "EZdrang",
   "license": "MIT",
-  "dependencies": {
-    "sql.js": "^1.14.1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "electron": "^42.4.0",
     "electron-builder": "^26.0.12"

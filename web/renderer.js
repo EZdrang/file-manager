@@ -293,11 +293,22 @@ function initEventListeners() {
     }
 
     let count = 0;
+    let skipped = 0;
     for (const file of files) {
       const srcPath = file.path;
       if (!srcPath) continue;
       const fileName = srcPath.split(/[/\\]/).pop();
       const destPath = `${currentDir}\\${fileName}`;
+      
+      // 检查同名文件
+      const pathInfo = await api.checkPath(destPath);
+      if (pathInfo.exists) {
+        if (!confirm(`目标位置已存在同名文件 "${fileName}"，是否覆盖？`)) {
+          skipped++;
+          continue;
+        }
+      }
+      
       const ok = await api.copyFile(srcPath, destPath);
       if (ok) count++;
     }
@@ -306,6 +317,8 @@ function initEventListeners() {
       showToast(`已拖入 ${count} 个文件`, 'success');
       if (currentDir) await loadDir(currentDir);
       await buildTree();
+    } else if (skipped > 0) {
+      showToast('已跳过重复文件', 'info');
     }
   }, true);
 
@@ -474,7 +487,7 @@ async function setWorkspace() {
 
 function updateTitle() {
   const name = workspaceDir ? workspaceDir.split(/[/\\]/).pop() : '未选择目录';
-  document.getElementById('titlebarTitle').textContent = `资料管理系统2.0 - ${name}`;
+  document.getElementById('titlebarTitle').textContent = `资料管理系统2.1 - ${name}`;
 }
 
 // === 文件树（左侧边栏）===
@@ -1425,30 +1438,6 @@ function highlightTreeNode(dirPath) {
   }
 }
 
-async function loadDirRaw(dirPath) {
-  if (!dirPath) return;
-  const entries = await api.readDir(dirPath);
-  entries.sort((a, b) => {
-    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-    let va, vb;
-    switch (sortBy) {
-      case 'name': va = a.name.toLowerCase(); vb = b.name.toLowerCase(); break;
-      case 'size': va = a.size || 0; vb = b.size || 0; break;
-      case 'modified': va = a.modified || ''; vb = b.modified || ''; break;
-      default: va = a.name.toLowerCase(); vb = b.name.toLowerCase();
-    }
-    if (va < vb) return sortDir === 'asc' ? -1 : 1;
-    if (va > vb) return sortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
-  fileList = entries;
-  renderFileList(entries);
-  const dirs = entries.filter(e => e.isDir).length;
-  const files = entries.filter(e => !e.isDir).length;
-  document.getElementById('statusText').textContent = `${dirs} 个文件夹，${files} 个文件`;
-  updateBreadcrumb(dirPath);
-}
-
 async function linkNewFolder() {
   const folder = await api.addLinkedFolder();
   if (folder) {
@@ -1553,53 +1542,12 @@ function showLinkedFolderContextMenu(e, lf) {
 
   const items = [
     { icon: '📂', label: '打开', action: () => { currentDir = lf.path; loadDir(lf.path); } },
-    { icon: '📋', label: '复制路径', action: () => { navigator.clipboard.writeText(lf.path); showToast('路径已复制', 'success'); } },
     { icon: '🪟', label: '在资源管理器中打开', action: () => api.openPath(lf.path) },
-    { sep: true },
-    { icon: '🔗', label: '解除链接', cls: 'danger', action: async () => {
-      if (confirm(`确定解除链接 "${lf.name}" 吗？`)) {
-        await api.removeLinkedFolder(lf.id);
-        linkedFolders = linkedFolders.filter(f => f.id !== lf.id);
-        await buildTree();
-        loadStats();
-        showToast('链接已解除', 'success');
-      }
-    }},
-  ];
-
-  for (const item of items) {
-    if (item.sep) {
-      const sep = document.createElement('div');
-      sep.className = 'ctx-menu-sep';
-      menu.appendChild(sep);
-    } else {
-      const btn = document.createElement('button');
-      btn.className = `ctx-menu-item ${item.cls || ''}`;
-      btn.innerHTML = `<span>${item.icon}</span><span>${item.label}</span>`;
-      btn.addEventListener('click', () => { menu.remove(); item.action(); });
-      menu.appendChild(btn);
-    }
-  }
-
-  positionMenu(menu, e);
-  closeMenuOnClick(menu);
-}
-
-function showLinkedFolderContextMenu(e, lf) {
-  const existing = document.querySelector('.context-menu');
-  if (existing) existing.remove();
-
-  const menu = document.createElement('div');
-  menu.className = 'context-menu';
-
-  const items = [
-    { icon: '📂', label: '打开', action: () => { currentDir = lf.path; loadDir(lf.path); } },
-    { icon: '🔗', label: '在资源管理器中打开', action: () => api.openLinkedFolder(lf.path) },
     { icon: '📋', label: '复制路径', action: () => { navigator.clipboard.writeText(lf.path); showToast('路径已复制', 'success'); } },
   ];
 
   if (multiWindow) {
-    items.push({ icon: '🪟', label: '在新窗口打开', action: () => api.openNewWindow(lf.path) });
+    items.push({ icon: '📑', label: '在新窗口打开', action: () => api.openNewWindow(lf.path) });
   }
 
   if (clipboard) {
@@ -1612,7 +1560,6 @@ function showLinkedFolderContextMenu(e, lf) {
       await api.removeLinkedFolder(lf.id);
       linkedFolders = linkedFolders.filter(f => f.id !== lf.id);
       await buildTree();
-      loadStats();
       showToast('链接已解除', 'success');
     }
   }});
@@ -1820,27 +1767,17 @@ async function deleteEntry(entry) {
   }
 }
 
-async function copyFile(entry) {
-  const dir = entry.path.replace(/[/\\][^/\\]+$/, '');
-  const ext = entry.name.split('.').pop();
-  const base = ext ? entry.name.slice(0, -(ext.length + 1)) : entry.name;
-  const copyName = ext ? `${base}_副本.${ext}` : `${base}_副本`;
-  const destPath = `${dir}\\${copyName}`;
-
-  const ok = await api.copyFile(entry.path, destPath);
-  if (ok) {
-    showToast(`已复制: ${copyName}`, 'success');
-    if (currentDir) await loadDir(currentDir);
-  } else {
-    showToast('复制失败', 'error');
-  }
-}
-
 async function pasteToFolder(destDir) {
   if (!clipboard) return;
   const { action, entry } = clipboard;
   const fileName = entry.name;
   const destPath = `${destDir}\\${fileName}`;
+
+  // 检查同名文件是否存在
+  const pathInfo = await api.checkPath(destPath);
+  if (pathInfo.exists) {
+    if (!confirm(`目标位置已存在同名文件 "${fileName}"，是否覆盖？`)) return;
+  }
 
   let ok;
   if (action === 'cut') {
@@ -1868,9 +1805,20 @@ async function pasteFromSystemClipboard() {
   }
 
   let count = 0;
+  let skipped = 0;
   for (const srcPath of sysFiles) {
     const fileName = srcPath.split(/[/\\]/).pop();
     const destPath = `${currentDir}\\${fileName}`;
+    
+    // 检查同名文件
+    const pathInfo = await api.checkPath(destPath);
+    if (pathInfo.exists) {
+      if (!confirm(`目标位置已存在同名文件 "${fileName}"，是否覆盖？`)) {
+        skipped++;
+        continue;
+      }
+    }
+    
     const ok = await api.copyFile(srcPath, destPath);
     if (ok) count++;
   }
@@ -1878,6 +1826,8 @@ async function pasteFromSystemClipboard() {
   if (count > 0) {
     showToast(`已从资源管理器粘贴 ${count} 个文件`, 'success');
     if (currentDir) await loadDir(currentDir);
+  } else if (skipped > 0) {
+    showToast('已跳过重复文件', 'info');
   }
 }
 
@@ -2207,7 +2157,7 @@ function loadSettings() {
   if (s.multiWindow !== undefined) multiWindow = s.multiWindow;
 }
 
-function saveSettings() {
+async function saveSettings() {
   const s = {
     theme: document.getElementById('settingTheme').value,
     autoCollapse: document.getElementById('settingAutoCollapse').classList.contains('on'),
@@ -2216,6 +2166,12 @@ function saveSettings() {
     apiPort: parseInt(document.getElementById('settingApiPort')?.value) || getSettings().apiPort || 5000
   };
   localStorage.setItem('settings', JSON.stringify(s));
+  
+  // 保存API端口到config.json
+  if (s.apiPort) {
+    await api.saveApiPort(s.apiPort);
+  }
+  
   autoCollapse = s.autoCollapse;
   multiWindow = s.multiWindow;
   applyTheme(s.theme);
@@ -2230,8 +2186,8 @@ function showAbout() {
   document.getElementById('modalBody').innerHTML = `
     <div style="text-align:center;padding:20px;">
       <div style="font-size:48px;margin-bottom:16px;">📁</div>
-      <h3 style="margin-bottom:8px;">资料管理系统2.0</h3>
-      <p style="color:var(--text-muted);font-size:13px;">版本 2.0.0</p>
+      <h3 style="margin-bottom:8px;">资料管理系统2.1</h3>
+      <p style="color:var(--text-muted);font-size:13px;">版本 2.1.0</p>
       <p style="color:var(--text-muted);font-size:13px;margin-top:8px;">Electron + 文件系统模式</p>
       <p style="color:var(--text-muted);font-size:13px;">EZdrang 出品</p>
     </div>

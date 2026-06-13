@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   exportConfig: () => ipcRenderer.invoke('export-config'),
   importConfig: () => ipcRenderer.invoke('import-config'),
+  saveApiPort: (port) => ipcRenderer.invoke('save-api-port', port),
 
   onCheckFirstRun: (callback) => ipcRenderer.on('check-first-run', (e, isFirstRun) => callback(isFirstRun))
 });

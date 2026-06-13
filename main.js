@@ -36,6 +36,8 @@ function getLogPath() {
   return universal;
 }
 
+let logWriteCount = 0;
+
 function writeLog(action, detail) {
   const logPath = getLogPath();
   if (!logPath) return;
@@ -43,15 +45,21 @@ function writeLog(action, detail) {
     const now = new Date().toLocaleString('zh-CN');
     const line = `[${now}] [系统与操作任务] ${action}: ${detail}\n`;
     fs.appendFileSync(logPath, line, 'utf-8');
-    // 设置Windows隐藏属性
-    try { execSync(`attrib +h "${logPath}"`, { stdio: 'ignore' }); } catch (e) {}
-    // 检查大小超过5MB则清理
-    const stat = fs.statSync(logPath);
-    if (stat.size > 5 * 1024 * 1024) {
-      const content = fs.readFileSync(logPath, 'utf-8');
-      const lines = content.split('\n');
-      const half = Math.floor(lines.length / 2);
-      fs.writeFileSync(logPath, lines.slice(half).join('\n'), 'utf-8');
+    
+    logWriteCount++;
+    // 每100次写入检查一次大小和隐藏属性
+    if (logWriteCount >= 100) {
+      logWriteCount = 0;
+      // 设置Windows隐藏属性
+      try { execSync(`attrib +h "${logPath}"`, { stdio: 'ignore' }); } catch (e) {}
+      // 检查大小超过5MB则清理
+      const stat = fs.statSync(logPath);
+      if (stat.size > 5 * 1024 * 1024) {
+        const content = fs.readFileSync(logPath, 'utf-8');
+        const lines = content.split('\n');
+        const half = Math.floor(lines.length / 2);
+        fs.writeFileSync(logPath, lines.slice(half).join('\n'), 'utf-8');
+      }
     }
   } catch (e) {}
 }
@@ -170,10 +178,10 @@ app.on('window-all-closed', () => {
 });
 
 // === 窗口控制 ===
-ipcMain.on('minimize-window', () => mainWindow.minimize());
-ipcMain.on('maximize-window', () => { mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(); });
-ipcMain.on('close-window', () => { mainWindow.webContents.send('ask-close-action'); });
-ipcMain.on('hide-to-tray', () => { mainWindow.hide(); });
+ipcMain.on('minimize-window', () => { if (mainWindow) mainWindow.minimize(); });
+ipcMain.on('maximize-window', () => { if (mainWindow) mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize(); });
+ipcMain.on('close-window', () => { if (mainWindow) mainWindow.webContents.send('ask-close-action'); });
+ipcMain.on('hide-to-tray', () => { if (mainWindow) mainWindow.hide(); });
 ipcMain.on('quit-app', () => { app.isQuitting = true; app.quit(); });
 
 // === 系统托盘 ===
@@ -188,7 +196,7 @@ function createTray() {
   }
 
   tray = new Tray(trayIcon);
-  tray.setToolTip('资料管理系统2.0');
+  tray.setToolTip('资料管理系统2.1');
 
   const contextMenu = Menu.buildFromTemplate([
     { 
@@ -486,6 +494,13 @@ ipcMain.handle('get-log-size', () => getLogSize());
 ipcMain.handle('clear-log', () => { clearLog(); return true; });
 
 // === 配置导入导出 ===
+ipcMain.handle('save-api-port', (e, port) => {
+  const cfg = loadConfig();
+  cfg.apiPort = port;
+  saveConfig(cfg);
+  return true;
+});
+
 ipcMain.handle('export-config', async () => {
   const result = await dialog.showSaveDialog(mainWindow, {
     title: '导出配置',
