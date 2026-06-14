@@ -302,10 +302,14 @@ function clearLog() {
 function loadConfig() {
   try {
     const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-    // 未来版本迁移逻辑可在此添加
-    // if (cfg.version === '1.0') { migrateV1toV2(cfg); }
     return cfg;
-  } catch (e) { return {}; }
+  } catch (e) {
+    // 配置文件损坏，备份后重置
+    if (fs.existsSync(CONFIG_PATH)) {
+      try { fs.copyFileSync(CONFIG_PATH, CONFIG_PATH + '.bak'); } catch (e2) {}
+    }
+    return {};
+  }
 }
 
 function saveConfig(cfg) {
@@ -315,6 +319,109 @@ function saveConfig(cfg) {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2));
   } catch (e) {
     console.error('保存配置失败:', e.message);
+  }
+}
+
+// 验证并修复配置文件（处理旧版升级兼容）
+function validateAndFixConfig() {
+  try {
+    if (!fs.existsSync(CONFIG_PATH)) return;
+    const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+    let changed = false;
+    
+    // 确保必要字段存在
+    if (!cfg.version) { cfg.version = APP_VERSION; changed = true; }
+    if (!Array.isArray(cfg.workspaces)) { cfg.workspaces = []; changed = true; }
+    if (cfg.linkedFolders) {
+      // 清理旧版linkedFolders
+      if (cfg.linkedFolders.length > 0 && cfg.workspaces.length === 0) {
+        const primary = cfg.workspace ? { id: 1, name: cfg.workspace.split(/[/\\]/).pop(), path: cfg.workspace, isPrimary: true } : null;
+        cfg.workspaces = [
+          ...(primary ? [primary] : []),
+          ...cfg.linkedFolders.map((lf, i) => ({ id: Date.now() + i, name: lf.name || lf.path.split(/[/\\]/).pop(), path: lf.path, isPrimary: false }))
+        ];
+      }
+      delete cfg.linkedFolders;
+      changed = true;
+    }
+    
+    // 验证每个workspace的path存在
+    const validWorkspaces = [];
+    for (const ws of cfg.workspaces) {
+      if (ws && ws.path && ws.name && ws.id) {
+        validWorkspaces.push(ws);
+      }
+    }
+    if (validWorkspaces.length !== cfg.workspaces.length) {
+      cfg.workspaces = validWorkspaces;
+      changed = true;
+    }
+    
+    // 确保有主目录
+    if (cfg.workspaces.length > 0 && !cfg.workspaces.some(w => w.isPrimary)) {
+      cfg.workspaces[0].isPrimary = true;
+      changed = true;
+    }
+    
+    // 同步workspaceDir
+    const primary = cfg.workspaces.find(w => w.isPrimary);
+    if (primary) {
+      if (cfg.workspace !== primary.path) {
+        cfg.workspace = primary.path;
+        changed = true;
+      }
+    } else if (cfg.workspace) {
+      // 旧版workspace字段，转为workspaces
+      cfg.workspaces.unshift({ id: 1, name: cfg.workspace.split(/[/\\]/).pop(), path: cfg.workspace, isPrimary: true });
+      changed = true;
+    }
+    
+    if (changed) {
+      saveConfig(cfg);
+      console.log('配置文件已自动修复');
+    }
+  } catch (e) {
+    console.error('配置验证失败:', e.message);
+  }
+}
+
+// 验证并修复元数据文件
+function validateAndFixMeta() {
+  try {
+    if (!fs.existsSync(META_PATH)) return;
+    const meta = JSON.parse(fs.readFileSync(META_PATH, 'utf-8'));
+    let changed = false;
+    
+    // 验证每个条目
+    for (const key of Object.keys(meta)) {
+      const entry = meta[key];
+      // 确保tags和notes是字符串
+      if (entry && typeof entry !== 'object') {
+        delete meta[key];
+        changed = true;
+      } else {
+        if (entry.tags !== undefined && typeof entry.tags !== 'string') {
+          entry.tags = String(entry.tags || '');
+          changed = true;
+        }
+        if (entry.notes !== undefined && typeof entry.notes !== 'string') {
+          entry.notes = String(entry.notes || '');
+          changed = true;
+        }
+      }
+    }
+    
+    if (changed) {
+      saveMeta(meta);
+      console.log('元数据已自动修复');
+    }
+  } catch (e) {
+    // 元数据损坏，备份后重置
+    if (fs.existsSync(META_PATH)) {
+      try { fs.copyFileSync(META_PATH, META_PATH + '.bak'); } catch (e2) {}
+    }
+    console.error('元数据文件已重置');
+    try { fs.writeFileSync(META_PATH, '{}'); } catch (e2) {}
   }
 }
 
@@ -408,6 +515,10 @@ function createWindow(dirPath) {
 }
 
 app.whenReady().then(() => {
+  // 启动时验证并修复配置文件和元数据（处理旧版升级兼容）
+  validateAndFixConfig();
+  validateAndFixMeta();
+  
   const cfg = loadConfig();
   if (cfg.workspace) workspaceDir = cfg.workspace;
   
