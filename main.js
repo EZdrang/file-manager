@@ -345,11 +345,13 @@ function saveMeta(meta) {
 function loadWorkspaces() {
   const cfg = loadConfig();
   // 兼容旧版：将linkedFolders转为workspaces
-  if (cfg.linkedFolders && cfg.linkedFolders.length > 0 && !cfg.workspaces) {
-    cfg.workspaces = [
-      ...(cfg.workspace ? [{ id: 1, name: cfg.workspace.split(/[/\\]/).pop(), path: cfg.workspace, isPrimary: true }] : []),
-      ...cfg.linkedFolders.map((lf, i) => ({ ...lf, id: Date.now() + i, isPrimary: false }))
-    ];
+  if (cfg.linkedFolders && cfg.linkedFolders.length > 0) {
+    if (!cfg.workspaces || cfg.workspaces.length === 0) {
+      cfg.workspaces = [
+        ...(cfg.workspace ? [{ id: 1, name: cfg.workspace.split(/[/\\]/).pop(), path: cfg.workspace, isPrimary: true }] : []),
+        ...cfg.linkedFolders.map((lf, i) => ({ ...lf, id: Date.now() + i, isPrimary: false }))
+      ];
+    }
     delete cfg.linkedFolders;
     saveConfig(cfg);
   }
@@ -1463,10 +1465,8 @@ function startApiServer() {
       // 工作目录信息
       if (pathname === '/api/workspace' && req.method === 'GET') {
         if (!workspaceDir) return sendJson(res, 200, { workspace: null, message: '未设置工作目录' });
-        const cfg = loadConfig();
         const meta = loadMeta();
-        const linked = cfg.linkedFolders || [];
-        return sendJson(res, 200, { workspace: workspaceDir, linkedFolders: linked.map(l => ({ name: l.name, path: l.path })), metaCount: Object.keys(meta).length });
+        return sendJson(res, 200, { workspace: workspaceDir, workspaces: workspaces.map(w => ({ name: w.name, path: w.path, isPrimary: w.isPrimary })), metaCount: Object.keys(meta).length });
       }
 
       // 列出文件
