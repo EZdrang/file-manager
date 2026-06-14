@@ -19,32 +19,9 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
-      
-      - name: Build Windows x64
-        run: npx electron-builder --win --x64
+        run: npm install
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload Windows x64 artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64
-          path: |
-            release/*.exe
-            release/*.blockmap
-          retention-days: 7
-
-  build-windows-arm64:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'npm'
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
       
       - name: Install dependencies
         run: npm ci
