@@ -41,7 +41,7 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64", "universal"] }
+        { "target": "dmg", "arch": ["x64", "arm64"] }
       ],
       "icon": "web/icon.icns",
       "category": "public.app-category.productivity",
