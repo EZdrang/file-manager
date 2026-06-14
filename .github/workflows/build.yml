@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-      - run: npx electron-builder --win
+      - run: npx electron-builder --win --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-      - run: npx electron-builder --mac
+      - run: npx electron-builder --mac --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
@@ -50,7 +50,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-      - run: npx electron-builder --linux deb
+      - run: npx electron-builder --linux deb --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
