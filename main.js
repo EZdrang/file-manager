@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const APP_VERSION = '3.1';
+const APP_VERSION = '3.2';
 const CONFIG_DIR = app.getPath('userData');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const META_PATH = path.join(CONFIG_DIR, 'metadata.json');
