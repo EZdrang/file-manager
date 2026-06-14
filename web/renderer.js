@@ -1175,7 +1175,7 @@ async function loadTagsForEntries(entries, tbody, panelIdx) {
         try {
           const dragItem = dragData;
           const fileName = dragItem.path.split(/[/\\]/).pop();
-          const destPath = entry.path + '\\' + fileName;
+          const destPath = entry.path + '/' + fileName;
           
           if (dragItem.isDir) {
             showToast('暂不支持操作文件夹', 'error');
@@ -1683,7 +1683,7 @@ function switchPanelMode(mode) {
         if (!dir) return;
         
         const fileName = dragItem.path.split(/[/\\]/).pop();
-        const destPath = dir + '\\' + fileName;
+          const destPath = dir + '/' + fileName;
         
         if (dragItem.isDir) {
           showToast('暂不支持操作文件夹', 'error');
@@ -3091,7 +3091,7 @@ async function exportSingleNote(filePath, fileName, noteContent) {
   if (!dir) return;
   const noteName = fileName.replace(/[<>:"/\\|?*]/g, '_') + '.md';
   const mdContent = `# ${fileName}\n\n**源文件路径:** \`${filePath}\`\n\n---\n\n${noteContent}\n`;
-  const singlePath = dir + '\\' + noteName;
+    const singlePath = dir + '/' + noteName;
   await api.writeFile(singlePath, mdContent);
   showToast(`已导出: ${noteName}`, 'success');
   api.openPath(dir);
@@ -3754,7 +3754,7 @@ async function syncTreeForSearch(dirPaths) {
     const parts = dirPath.replace(workspaceDir, '').split(/[/\\]/).filter(Boolean);
     let accum = workspaceDir;
     for (const part of parts) {
-      accum += '\\' + part;
+    accum += path.sep + part;
       // 展开这一层
       const node = document.querySelector(`.tree-node-item[data-path="${CSS.escape(accum)}"]`);
       if (node) {
@@ -3814,7 +3814,7 @@ async function syncTreeForSearch(dirPaths) {
 // === 操作功能 ===
 async function navigateToPath(targetPath) {
   // 标准化路径
-  const normalized = targetPath.replace(/\//g, '\\');
+  const normalized = targetPath.replace(/\//g, path.sep);
   
   // 检查路径是否存在
   const pathInfo = await api.checkPath(normalized);
@@ -3827,7 +3827,7 @@ async function navigateToPath(targetPath) {
   
   // 如果是文件，跳转到其所在目录
   if (!pathInfo.isDir) {
-    dirToLoad = normalized.replace(/\\[^\\]+$/, '');
+    dirToLoad = normalized.replace(/[/\\][^/\\]+$/, '');
     const parentInfo = await api.checkPath(dirToLoad);
     if (!parentInfo.exists) {
       showToast('路径不存在', 'error');
@@ -3902,7 +3902,7 @@ async function expandTreeToPath(targetPath) {
   
   // 2. 逐层展开到目标路径
   for (let i = 0; i < targetParts.length; i++) {
-    accum = accum + '\\' + targetParts[i];
+    accum = accum + path.sep + targetParts[i];
     
     let node = document.querySelector(`.tree-node-item[data-path="${CSS.escape(accum)}"]`);
     if (!node) {
@@ -4361,7 +4361,7 @@ async function pasteToFolder(destDir) {
   if (!clipboard) return;
   const { action, entry } = clipboard;
   const fileName = entry.name;
-  const destPath = `${destDir}\\${fileName}`;
+        const destPath = `${destDir}/${fileName}`;
 
   // 检查同名文件是否存在
   const pathInfo = await api.checkPath(destPath);
@@ -4398,7 +4398,7 @@ async function pasteFromSystemClipboard() {
   let skipped = 0;
   for (const srcPath of sysFiles) {
     const fileName = srcPath.split(/[/\\]/).pop();
-    const destPath = `${currentDir}\\${fileName}`;
+          const destPath = `${currentDir}/${fileName}`;
     
     // 检查同名文件
     const pathInfo = await api.checkPath(destPath);

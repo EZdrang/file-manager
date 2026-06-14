@@ -4,7 +4,10 @@ const fs = require('fs');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const APP_VERSION = '3.2';
+const APP_VERSION = '3.3';
+const IS_WIN = process.platform === 'win32';
+const IS_MAC = process.platform === 'darwin';
+const IS_LINUX = process.platform === 'linux';
 const CONFIG_DIR = app.getPath('userData');
 const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json');
 const META_PATH = path.join(CONFIG_DIR, 'metadata.json');
@@ -12,6 +15,26 @@ const META_PATH = path.join(CONFIG_DIR, 'metadata.json');
 // 旧版日志路径（带版本号）和新版通用日志路径
 const LEGACY_LOG_NAME = '.资料管理系统2.0.log';
 const UNIVERSAL_LOG_NAME = '.资料管理系统.log';
+
+// === 跨平台工具函数 ===
+function setFileHidden(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  try {
+    if (IS_WIN) {
+      execSync(`attrib +h "${filePath}"`, { stdio: 'ignore' });
+    } else if (IS_MAC) {
+      // macOS: 通过chflags设置隐藏
+      try { execSync(`chflags hidden "${filePath}"`, { stdio: 'ignore' }); } catch (e) {}
+    }
+    // Linux: 以.开头的文件名自动隐藏
+  } catch (e) {}
+}
+
+function getClipboardCommand() {
+  if (IS_WIN) return 'powershell';
+  if (IS_MAC) return 'pbcopy';
+  return 'xclip';
+}
 
 let mainWindow;
 let tray = null;
@@ -236,12 +259,12 @@ function getLogPath() {
   if (fs.existsSync(legacy) && !fs.existsSync(universal)) {
     try {
       fs.renameSync(legacy, universal);
-      execSync(`attrib +h "${universal}"`, { stdio: 'ignore' });
+      setFileHidden(universal);
     } catch (e) {}
   }
   // 确保隐藏属性
   if (fs.existsSync(universal)) {
-    try { execSync(`attrib +h "${universal}"`, { stdio: 'ignore' }); } catch (e) {}
+    setFileHidden(universal);
   }
   return universal;
 }
@@ -260,8 +283,8 @@ function writeLog(action, detail) {
     // 每100次写入检查一次大小和隐藏属性
     if (logWriteCount >= 100) {
       logWriteCount = 0;
-      // 设置Windows隐藏属性
-      try { execSync(`attrib +h "${logPath}"`, { stdio: 'ignore' }); } catch (e) {}
+      // 设置隐藏属性
+      setFileHidden(logPath);
       // 检查大小超过5MB则清理
       const stat = fs.statSync(logPath);
       if (stat.size > 5 * 1024 * 1024) {
@@ -966,10 +989,10 @@ ipcMain.handle('move-file', (e, sourcePath, destPath) => {
 });
 
 // === 系统剪贴板（Windows资源管理器）===
+// === 跨平台剪贴板 ===
 function runPs(script) {
+  if (!IS_WIN) return '';
   const tmpFile = path.join(os.tmpdir(), `clip_${Date.now()}.ps1`);
-  // 不使用BOM - PowerShell可以正常处理UTF-8
-  // 使用Buffer避免Node.js的UTF-8 BOM行为
   const buf = Buffer.from(script, 'utf-8');
   fs.writeFileSync(tmpFile, buf);
   try {
@@ -982,23 +1005,38 @@ function runPs(script) {
   }
 }
 
+function runCmd(cmd) {
+  try {
+    return execSync(cmd, { encoding: 'utf-8', timeout: 5000 }).trim();
+  } catch (e) {
+    return '';
+  }
+}
+
 ipcMain.handle('clipboard-write-files', (e, filePaths) => {
   try {
-    // 将路径写入临时文件，然后用PowerShell读取并添加到剪贴板
-    const listFile = path.join(os.tmpdir(), `clip_paths_${Date.now()}.txt`);
-    fs.writeFileSync(listFile, filePaths.join('\n'), 'utf-16le');
+    writeLog('剪贴板写入', filePaths.join(', '));
     
-    const script = `Add-Type -AssemblyName System.Windows.Forms
+    if (IS_WIN) {
+      // Windows: 使用PowerShell SetFileDropList
+      const listFile = path.join(os.tmpdir(), `clip_paths_${Date.now()}.txt`);
+      fs.writeFileSync(listFile, filePaths.join('\n'), 'utf-16le');
+      const script = `Add-Type -AssemblyName System.Windows.Forms
 $paths = Get-Content "${listFile}" -Encoding Unicode
 $files = New-Object System.Collections.Specialized.StringCollection
 foreach ($p in $paths) { $files.Add($p) | Out-Null }
 [System.Windows.Forms.Clipboard]::SetFileDropList($files)`;
-    
-    writeLog('剪贴板写入', filePaths.join(', '));
-    runPs(script);
-    
-    // 清理临时文件
-    try { fs.unlinkSync(listFile); } catch (e) {}
+      runPs(script);
+      try { fs.unlinkSync(listFile); } catch (e) {}
+    } else if (IS_MAC) {
+      // macOS: 使用osascript设置剪贴板
+      const pathsJson = JSON.stringify(filePaths);
+      const script = `set clipboard to ${JSON.stringify(filePaths.join('\n'))}`;
+      runCmd(`osascript -e '${script.replace(/'/g, "'\\''")}'`);
+    } else {
+      // Linux: 使用xclip
+      runCmd(`echo "${filePaths.join('\n')}" | xclip -selection clipboard`);
+    }
     return true;
   } catch (err) {
     writeLog('剪贴板写入失败', err.message);
@@ -1008,9 +1046,9 @@ foreach ($p in $paths) { $files.Add($p) | Out-Null }
 
 ipcMain.handle('clipboard-read-files', () => {
   try {
-    const listFile = path.join(os.tmpdir(), `clip_read_${Date.now()}.txt`);
-    
-    const script = `Add-Type -AssemblyName System.Windows.Forms
+    if (IS_WIN) {
+      const listFile = path.join(os.tmpdir(), `clip_read_${Date.now()}.txt`);
+      const script = `Add-Type -AssemblyName System.Windows.Forms
 $list = [System.Windows.Forms.Clipboard]::GetFileDropList()
 if ($list -and $list.Count -gt 0) {
   $list | Out-File "${listFile}" -Encoding Unicode
@@ -1018,19 +1056,22 @@ if ($list -and $list.Count -gt 0) {
 } else {
   Write-Output "EMPTY"
 }`;
-    
-    const result = runPs(script);
-    writeLog('剪贴板读取结果', result);
-    
-    let files = [];
-    if (result.includes('OK') && fs.existsSync(listFile)) {
-      const content = fs.readFileSync(listFile, 'utf-16le');
-      files = content.split(/\r?\n/).filter(p => p && p.trim() && fs.existsSync(p.trim())).map(f => f.trim());
-      try { fs.unlinkSync(listFile); } catch (e) {}
+      const result = runPs(script);
+      writeLog('剪贴板读取结果', result);
+      let files = [];
+      if (result.includes('OK') && fs.existsSync(listFile)) {
+        const content = fs.readFileSync(listFile, 'utf-16le');
+        files = content.split(/\r?\n/).filter(p => p && p.trim() && fs.existsSync(p.trim())).map(f => f.trim());
+        try { fs.unlinkSync(listFile); } catch (e) {}
+      }
+      return files;
+    } else if (IS_MAC) {
+      const result = runCmd('osascript -e "get the clipboard as \"class filef\" as «class furl»"');
+      return result ? result.split('\n').filter(p => p && fs.existsSync(p.trim())).map(f => f.trim()) : [];
+    } else {
+      const result = runCmd('xclip -selection clipboard -o');
+      return result ? result.split('\n').filter(p => p && fs.existsSync(p.trim())).map(f => f.trim()) : [];
     }
-    
-    writeLog('剪贴板读取', files.length + ' 个文件');
-    return files;
   } catch (err) {
     writeLog('剪贴板读取失败', err.message);
     return [];

@@ -1,12 +1,17 @@
 {
-  "name": "file-database-manager",
-  "version": "3.2.0",
-  "description": "资料管理系统",
+  "name": "file-manager",
+  "version": "3.3.0",
+  "description": "资料管理系统 - 现代化本地文件管理工具",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "node build.js",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win portable",
+    "dist:win": "electron-builder --win nsis portable",
+    "dist:win-arm64": "electron-builder --win --arm64 nsis portable",
+    "dist:mac": "electron-builder --mac dmg",
+    "dist:linux": "electron-builder --linux deb",
+    "dist:all": "electron-builder --win nsis portable --mac dmg --linux deb"
   },
   "author": "EZdrang",
   "license": "MIT",
@@ -25,13 +30,30 @@
   "build": {
     "appId": "com.ezdrang.filemanager",
     "productName": "资料管理系统",
+    "copyright": "Copyright © 2026 EZdrang",
     "win": {
       "target": [
-        "nsis",
-        "portable",
-        "dir"
+        { "target": "nsis", "arch": ["x64", "arm64"] },
+        { "target": "portable", "arch": ["x64", "arm64"] }
       ],
-      "icon": "web/icon.ico"
+      "icon": "web/icon.ico",
+      "artifactName": "file-manager-${version}-setup-${arch}.exe"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64", "universal"] }
+      ],
+      "icon": "web/icon.icns",
+      "category": "public.app-category.productivity",
+      "artifactName": "file-manager-${version}-${arch}.dmg"
+    },
+    "linux": {
+      "target": [
+        { "target": "deb", "arch": ["x64", "arm64"] }
+      ],
+      "icon": "web/icons",
+      "category": "Utility;FileTools",
+      "artifactName": "file-manager-${version}.${arch}.deb"
     },
     "nsis": {
       "oneClick": false,
@@ -43,12 +65,17 @@
       "installerIcon": "web/icon.ico",
       "uninstallerIcon": "web/icon.ico",
       "installerHeaderIcon": "web/icon.ico",
-      "artifactName": "file-manager-setup.exe",
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true
     },
     "portable": {
-      "artifactName": "file-manager-portable.exe"
+      "artifactName": "file-manager-${version}-portable-${arch}.exe"
+    },
+    "dmg": {
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
     },
     "directories": {
       "output": "release"
