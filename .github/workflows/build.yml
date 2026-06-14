@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+env:
+  ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -15,11 +18,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-        env:
-          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
       - run: npx electron-builder --win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: windows
@@ -34,8 +33,6 @@ jobs:
           node-version: '22'
       - run: npm install
       - run: npx electron-builder --mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: macos
@@ -50,8 +47,6 @@ jobs:
           node-version: '22'
       - run: npm install
       - run: npx electron-builder --linux deb
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
         with:
           name: linux
