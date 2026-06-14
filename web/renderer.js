@@ -1236,6 +1236,7 @@ async function loadTagsForEntries(entries, tbody, panelIdx) {
 }
 
 async function openFileDetail(entry) {
+  try {
   currentFile = entry;
   addRecentFile(entry.path);
   // 清理旧的 EXIF 面板
@@ -1359,6 +1360,13 @@ async function openFileDetail(entry) {
     }
   } else {
     previewArea.innerHTML = `<span class="preview-placeholder"><span style="font-size:32px;display:block;margin-bottom:8px;">${fileType.icon}</span>暂不支持预览<br><small>${fileType.label}</small></span>`;
+  }
+  } catch (e) {
+    console.error('预览错误:', e);
+    const previewArea = document.getElementById('previewArea');
+    if (previewArea) {
+      previewArea.innerHTML = `<span class="preview-placeholder" style="color:var(--danger);">预览出错<br><small>${e.message || e}</small></span>`;
+    }
   }
 }
 
