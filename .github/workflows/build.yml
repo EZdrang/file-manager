@@ -11,113 +11,64 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm install
+      - run: npm install
         env:
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Build Windows ARM64
-        run: npx electron-builder --win --arm64
+      - run: npx electron-builder --win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload Windows ARM64 artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: windows-arm64
-          path: |
-            release/*.exe
-            release/*.blockmap
-          retention-days: 7
+          name: windows
+          path: release/*.exe
 
   build-macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Build macOS
-        run: npx electron-builder --mac
+      - run: npm install
+      - run: npx electron-builder --mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: macos
-          path: |
-            release/*.dmg
-            release/*.blockmap
-          retention-days: 7
+          path: release/*.dmg
 
   build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Build Linux DEB
-        run: npx electron-builder --linux deb
+      - run: npm install
+      - run: npx electron-builder --linux deb
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: |
-            release/*.deb
-            release/*.blockmap
-          retention-days: 7
+          path: release/*.deb
 
   release:
-    needs: [build-windows, build-windows-arm64, build-macos, build-linux]
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: |
-            artifacts/**/*.exe
-            artifacts/**/*.dmg
-            artifacts/**/*.deb
-            artifacts/**/*.blockmap
+          files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
