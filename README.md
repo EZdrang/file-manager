@@ -2,6 +2,27 @@
 
 现代化本地文件管理工具，基于Electron构建，支持REST API接口，可与AI Agent集成协作。
 
+## 下载
+
+### Windows
+| 文件 | 说明 |
+|------|------|
+| `file-manager-3.3.0-setup-x64.exe` | Windows x64 安装包 |
+| `file-manager-3.3.0-setup-arm64.exe` | Windows ARM64 安装包 |
+| `file-manager-3.3.0-portable-x64.exe` | Windows x64 便携版 |
+| `file-manager-3.3.0-portable-arm64.exe` | Windows ARM64 便携版 |
+
+### macOS
+| 文件 | 说明 |
+|------|------|
+| `file-manager-3.3.0-x64.dmg` | macOS Intel DMG |
+| `file-manager-3.3.0-arm64.dmg` | macOS Apple Silicon DMG |
+
+### Linux
+| 文件 | 说明 |
+|------|------|
+| `file-manager-3.3.0.amd64.deb` | Linux x64 DEB包 |
+
 ## 功能特性
 
 ### 核心功能
