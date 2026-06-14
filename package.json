@@ -13,7 +13,7 @@
     "dist:linux": "electron-builder --linux deb",
     "dist:all": "electron-builder --win nsis portable --mac dmg --linux deb"
   },
-  "author": "EZdrang",
+  "author": "EZdrang <821080270@qq.com>",
   "license": "MIT",
   "dependencies": {
     "7zip-min": "^3.0.1",
