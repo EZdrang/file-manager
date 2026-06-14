@@ -1632,6 +1632,18 @@ function startApiServer() {
 
 app.whenReady().then(() => {
   startApiServer();
+  
+  // 全局错误日志
+  process.on('uncaughtException', (err) => {
+    const logPath = path.join(app.getPath('userData'), 'error.log');
+    const msg = `[${new Date().toISOString()}] ${err.stack || err.message}\n`;
+    try { fs.appendFileSync(logPath, msg, 'utf-8'); } catch (e) {}
+  });
+  process.on('unhandledRejection', (err) => {
+    const logPath = path.join(app.getPath('userData'), 'error.log');
+    const msg = `[${new Date().toISOString()}] Unhandled: ${err}\n`;
+    try { fs.appendFileSync(logPath, msg, 'utf-8'); } catch (e) {}
+  });
 });
 
 // === GitHub更新检查 ===

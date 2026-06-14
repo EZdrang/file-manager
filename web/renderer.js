@@ -42,6 +42,17 @@ async function sysPasteFiles() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // 全局错误捕获
+  window.onerror = (msg, src, line, col, err) => {
+    const detail = `[${new Date().toISOString()}] ${msg}\n位置: ${src}:${line}:${col}\n${err?.stack || ''}`;
+    console.error('JS错误:', detail);
+    // 显示在预览区域
+    const previewArea = document.getElementById('previewArea');
+    if (previewArea) {
+      previewArea.innerHTML = `<span class="preview-placeholder" style="color:var(--danger);text-align:left;font-size:11px;white-space:pre-wrap;">JS错误: ${msg}\n位置: ${src?.split('/').pop()}:${line}</span>`;
+    }
+  };
+  
   initEventListeners();
   initTheme();
   loadSettings();
